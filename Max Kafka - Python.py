@@ -74,5 +74,3 @@ priceplan = load_and_transform_table("bolt_finint_prod.silver.fi_priceplan_enric
 product = load_and_transform_table("bolt_finint_prod.silver.fi_product_enriched", pr_cols)
 campaign = load_and_transform_table("bolt_finint_prod.silver.fi_campaignv2_enriched", cam_cols)
 paymentmethod = load_and_transform_table("bolt_finint_prod.silver.fi_paymentmethodv2_enriched", pm_cols)
-
-display(subscription)
