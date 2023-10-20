@@ -32,5 +32,3 @@ subs_cols = [
 
 # Load the table into a DataFrame and apply the transformations
 subscription = spark.table("bolt_finint_prod.silver.fi_subscriptionv2_enriched").select(*subs_cols)
-
-subscription.printSchema()
