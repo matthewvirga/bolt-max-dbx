@@ -43,13 +43,25 @@ transaction_status_udf = udf(determine_transaction_status, StringType())
 extract_successful_ref_udf = udf(extract_successful_ref, StringType())
 
 # Apply the UDF to the transactions DataFrame
-transactions = transactions.withColumn(
+transactions = transactions.select(
+    "created".cast("date").alias("transaction_date"),
+    when("type" == "PAYMENT_TRANSACTION_TYPE_AUTOMATED", "RECURRING")
+    .when("type" == "PAYMENT_TRANSACTION_TYPE_INTERACTIVE", "FIRST")
+    .when(("type" == "PAYMENT_TRANSACTION_TYPE_INTERACTIVE") & ("amountDetails.amountWithTax.minorAmountInclTax" == 0),"FIRST_FREE")
+    .otherwise("UNKNOWN")
+    .alias("payment_type")
+) \
+.withColumn(
     "og_provider_payment_reference", 
-    extract_successful_ref_udf(col("stateTransitions"))) \
-        .withColumn("transaction_status", transaction_status_udf(col("currentState"))) \
-        .withColumn("transaction_type", 
-                when(col("currentState.refunded.providerRefundReference").isNotNull(), "REFUND")
-                .when(col("currentState.chargeback.providerChargebackReference").isNotNull(), "CHARGEBACK")
-                .otherwise("CHARGE"))
-
-transactions.show()
+    extract_successful_ref_udf(col("stateTransitions"))
+) \
+.withColumn(
+    "transaction_status", 
+    transaction_status_udf(col("currentState"))
+) \
+.withColumn(
+    "transaction_type", 
+    when(col("currentState.refunded.providerRefundReference").isNotNull(), "REFUND")
+    .when(col("currentState.chargeback.providerChargebackReference").isNotNull(), "CHARGEBACK")
+    .otherwise("CHARGE")
+)
