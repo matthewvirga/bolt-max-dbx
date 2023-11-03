@@ -2,7 +2,7 @@ from pyspark.sql.functions import when, upper
 
 # Load the tables into Dataframes
 product = spark.table("bolt_finint_prod.silver.fi_product_enriched")
-priceplan = spark.table("bolt_finint_prod.silver.fi_priceplan_enriched_kafka")
+priceplan = spark.table("bolt_finint_prod.silver.fi_priceplanv2_enriched")
 campaign = spark.table("bolt_finint_prod.silver.fi_campaignv2_enriched")
 
 
