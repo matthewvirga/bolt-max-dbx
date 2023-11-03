@@ -107,4 +107,3 @@ transactions = transactions.select(
 
     transactions["id"].alias("transaction_id")
     )
-transactions.show()
