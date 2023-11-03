@@ -7,9 +7,11 @@ transactions = spark.table("bolt_finint_prod.silver.fi_transactionv2_enriched")
 
 # Define the UDF for prev vendor ref
 def extract_successful_ref(state_transitions):
-    for item in state_transitions:
-        if item.successful:
-            return item.successful.providerPaymentReference
+    # Loop over each transition struct in the stateTransitions array
+    for transition in state_transitions:
+        # Check if 'successful' is part of the struct and is not None
+        if transition.successful and transition.successful.providerPaymentReference:
+            return transition.successful.providerPaymentReference
     return None
 
 # Define the Python function for transaction_status
@@ -44,7 +46,7 @@ extract_successful_ref_udf = udf(extract_successful_ref, StringType())
 
 # Apply the UDF to the transactions DataFrame
 transactions = transactions.withColumn(
-    "og_provider_payment_reference", 
+    "og_provider_payment_reference",
     extract_successful_ref_udf(col("stateTransitions"))
 ) \
 .withColumn(
@@ -105,4 +107,4 @@ transactions = transactions.select(
 
     transactions["id"].alias("transaction_id")
     )
-
+transactions.show()
