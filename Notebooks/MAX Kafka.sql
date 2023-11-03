@@ -131,87 +131,6 @@ where 0=0
 
 -- COMMAND ----------
 
--- DBTITLE 1,Kafka Subscriptions Silver
-create or replace temporary view Kafka_Subscriptions AS
----\/ pulls together the priceplan and product tables for subscription info \/---
-
-with plan as (
-select
-  pp.id as priceplanid,
-  pr.name as product_name,
-  case
-    when UPPER(pr.name) like '%MVPD%' then 'Partner'
-    when pp.provider = 'WEB' or internalname like 'US Web%' then 'Direct'
-    when priceplantype = 'TYPE_THIRD_PARTY' then 'IAP'
-    else 'Direct'
-  end as Sub_source,
-  case
-    when pr.tiertype = 'TIER_TYPE_AD_FREE' then 'Ad-Free'
-    when pr.tiertype = 'TIER_TYPE_AD_LITE' then 'Ad-Lite'
-    when pr.tiertype = 'TIER_TYPE_PREMIUM_AD_FREE' then 'Ultimate'
-    else 'Unclassified'
-  end as tiertype,
-  case
-    when pp.provider != 'WEB' then pp.provider
-    else 'Direct'
-  end as provider_name,
-  pp.internalName as internalname,
-  pp.campaignId,
-  ca.name as campaign_name,
-  replace(pr.productPrices [0].market, 'TG_MARKET_', '') as market,
-  replace(pp.pricePlanType, 'TYPE_', '') as priceplantype,
-  replace(pp.period, 'PERIOD_', '') as paymentPeriod,
-  Coalesce(pp.price / 100,0) as price,
-  pp.currency as currency
-from
-  bolt_finint_prod.silver.fi_priceplan_enriched_kafka pp
-  JOIN bolt_finint_prod.silver.fi_product_enriched pr on pp.productid = pr.id
-  JOIN bolt_finint_prod.silver.fi_campaignv2_enriched ca on pp.campaignId = ca.id
-)
-
-
----\/ Final Statement \/---
-select
-
-plan.provider_name,
-plan.tiertype as tier_type,
-replace(s.direct.subscriptiontype, 'TYPE_', '') as subscription_type,
-
-s.status as Subscription_Status,
-s.startdate::date as Sub_Start_date,
-s.enddate::date as Sub_End_date,
-s.nextRenewaldate::date as Next_Renewal_Date,
-
----\/ Creates the current invoice period start date for revenue recognition accrual \/---
-CASE
- WHEN plan.paymentPeriod = 'MONTH' THEN ADD_MONTHS(s.nextRenewalDate, -1)
- WHEN plan.paymentPeriod = 'YEAR' THEN ADD_MONTHS(s.nextRenewalDate, -12)
-END AS invoice_period_start,
-
-plan.product_name,
-plan.paymentPeriod,
-plan.priceplantype,
-plan.price,
-
----\/ cleanup for payment method info \/---
-case
-  when pm.provider LIKE '%SPREEDLY%' then 'STRIPE'
-  when pm.provider LIKE '%PAYPAL%' then 'PAYPAL'
-end as payment_provider,
-UPPER(pm.cardDetails.cardProvider) as card_Brand,
-UPPER(pm.cardDetails.fundingSource) as card_funding,
-
-count(*) as Subscriber_count
-
-
-from bolt_finint_prod.silver.fi_subscriptionv2_enriched s
-LEFT JOIN plan on s.priceplanid=plan.priceplanid
-LEFT JOIN bolt_finint_prod.silver.fi_paymentmethodv2_enriched pm on s.direct.paymentMethodId = pm.legacyPaymentMethodId
-where 1=1 
-group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
-
--- COMMAND ----------
-
 -- MAGIC
 -- MAGIC %md # Control Reporting
 
@@ -240,8 +159,8 @@ FROM Kafka_Transactions kt
          LEFT JOIN refunds ON kt.trx_id = refunds.previous_trx_id
          LEFT JOIN bolt_finint_prod.silver.fi_transaction_enriched tr ON kt.trx_id = tr.merchantReferenceId
 where 1=1
-    -- AND transaction_date >= current_date()-1
-    AND transaction_date >= '2023-10-14'
+    AND transaction_date = current_date()-1
+    -- AND transaction_date >= '2023-10-14'
     AND transaction_status = 'SUCCESS'
     AND transaction_type = 'CHARGE'
     AND payment_provider IN ('STRIPE','PAYPAL')
@@ -249,3 +168,18 @@ GROUP BY 1, 2, 3, 4
 HAVING count > 1 --returns duplicate transactions only--
 and Refunds_count = 0 --removes already refunded users - comment out this line to see full log--
 
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Duplicate DTC Subscriptions - Kafka Raw Events
+select
+record.subscription.userid as userid,
+-- record.subscription.status as status,
+count(record.subscription.globalsubscriptionid) as sub_count
+from bolt_dcp_prod.bronze.raw_s2s_subscription_entities
+where 1=1
+  and UPPER(record.subscription.direct.paymentprovider) in ('SPREEDLY','PAYPAL')
+  and record.subscription.partner is null
+  and record.subscription.status in ('STATUS_ACTIVE','STATUS_CANCELED')
+group by 1
+HAVING sub_count > 1
