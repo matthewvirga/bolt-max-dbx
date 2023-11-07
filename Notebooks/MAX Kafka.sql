@@ -20,7 +20,8 @@ SELECT
 )
 
 select
-t.created::date as transaction_date,
+t.created::date as created_date,
+t.currentstate.occurred::date as occurred_date,
 
 case
   when t.type = 'PAYMENT_TRANSACTION_TYPE_AUTOMATED' then 'RECURRING'
@@ -136,7 +137,7 @@ where 0=0
 
 -- COMMAND ----------
 
--- DBTITLE 1,Duplicate Transactions - Kafka
+-- DBTITLE 1,Duplicate DTC Transactions - Kafka
 ---\/ identify refunds separately to join to the transactions later \/---
 with refunds AS (
   SELECT previous_trx_id,
@@ -148,10 +149,11 @@ with refunds AS (
 
 --\/ final statement \/--
 SELECT customer_userid,
-       transaction_date,
+       created_date,
        product_name,
+       coalesce(tr.productDescription, 'N/a') as product_desc,
        Plan_price,
-       COUNT(trx_id)                            as count,
+       COUNT(distinct trx_id)                           as count,
        COALESCE(SUM(charged_amount), 0)         as Total_Charges,
        count(refunds.previous_trx_id)           as Refunds_count,
        COALESCE(SUM(refunds.total_refunded), 0) as total_refunded
@@ -159,12 +161,11 @@ FROM Kafka_Transactions kt
          LEFT JOIN refunds ON kt.trx_id = refunds.previous_trx_id
          LEFT JOIN bolt_finint_prod.silver.fi_transaction_enriched tr ON kt.trx_id = tr.merchantReferenceId
 where 1=1
-    AND transaction_date = current_date()-1
-    -- AND transaction_date >= '2023-10-14'
+    AND created_date >= '2023-05-22'
     AND transaction_status = 'SUCCESS'
     AND transaction_type = 'CHARGE'
     AND payment_provider IN ('STRIPE','PAYPAL')
-GROUP BY 1, 2, 3, 4
+GROUP BY 1, 2, 3, 4, 5
 HAVING count > 1 --returns duplicate transactions only--
 and Refunds_count = 0 --removes already refunded users - comment out this line to see full log--
 
@@ -183,3 +184,49 @@ where 1=1
   and record.subscription.status in ('STATUS_ACTIVE','STATUS_CANCELED')
 group by 1
 HAVING sub_count > 1
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Refund Audit
+select
+ra.realm,
+ra.action,
+ra.created::date as refund_date,
+ra.transactionId,
+ra.refunderUserId,
+us.unpackedvalue.user.email as refunder_email,
+ra.reasonOfRefund,
+ra.customerUserId,
+ra.amount/100 as amount,
+ra.currency,
+ra.paymentMethod.id as payment_method_id,
+ra.paymentMethod.paymentType as payment_type,
+ra.paymentMethod.provider as Provider
+from bolt_finint_prod.silver.fi_refundaudit_enriched ra
+LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
+where created::date >= '2023-05-22'
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Unbilled Susbcriptions - Kafka Silver
+Select
+  s.userid,
+  s.globalsubscriptionid,
+  s.status as sub_status,
+  pr.name as product_name,
+  replace(pp.period, "PERIOD_","") as payment_period,
+  pp.internalname as internal_name,
+  coalesce(pp.price/100,0) as sku_price,
+  s.startDate :: date as sub_start_date,
+  s.nextRenewalDate :: date as next_renewal_date
+from
+  bolt_finint_prod.silver.fi_subscriptionv2_enriched s
+  join bolt_finint_prod.silver.fi_priceplanv2_enriched pp on s.pricePlanId = pp.id
+  join bolt_finint_prod.silver.fi_product_enriched pr on pp.productId = pr.id
+where
+  1 = 1
+  and direct.paymentprovider is not null
+  and nextrenewaldate :: date < current_date() -14
+  and s.status in ('STATUS_ACTIVE', 'STATUS_CANCELED')
+group by
+  all
