@@ -187,27 +187,6 @@ HAVING sub_count > 1
 
 -- COMMAND ----------
 
--- DBTITLE 1,Refund Audit
-select
-ra.realm,
-ra.action,
-ra.created::date as refund_date,
-ra.transactionId,
-ra.refunderUserId,
-us.unpackedvalue.user.email as refunder_email,
-ra.reasonOfRefund,
-ra.customerUserId,
-ra.amount/100 as amount,
-ra.currency,
-ra.paymentMethod.id as payment_method_id,
-ra.paymentMethod.paymentType as payment_type,
-ra.paymentMethod.provider as Provider
-from bolt_finint_prod.silver.fi_refundaudit_enriched ra
-LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
-where created::date >= '2023-05-22'
-
--- COMMAND ----------
-
 -- DBTITLE 1,Unbilled Susbcriptions - Kafka Silver
 Select
   s.userid,
@@ -230,3 +209,74 @@ where
   and s.status in ('STATUS_ACTIVE', 'STATUS_CANCELED')
 group by
   all
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC # Ad-hoc
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Refund Audit
+select
+ra.realm,
+ra.action,
+ra.created::date as refund_date,
+ra.transactionId,
+ra.refunderUserId,
+us.unpackedvalue.user.email as refunder_email,
+ra.reasonOfRefund,
+ra.customerUserId,
+ra.amount/100 as amount,
+ra.currency,
+ra.paymentMethod.id as payment_method_id,
+ra.paymentMethod.paymentType as payment_type,
+ra.paymentMethod.provider as Provider
+from bolt_finint_prod.silver.fi_refundaudit_enriched ra
+LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
+-- where created::date >= current_date()-7
+where ra.customerUserId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Vertex check
+with vertex_charges as (
+  Select 
+  `Posting Date`,
+  `Flex Code 12` as bolt_user_id,
+  `Transaction Synchronization ID`,
+  SUM(`Gross Amount`) as gross_amt, 
+  SUM(`Tax Amount`) as Tax_amt
+from bolt_finint_int.bronze.vertex_extract_v3
+group by 1,2,3
+HAVING gross_amt > 0)
+,
+kafka_charges as (
+  select *
+  from Kafka_Transactions
+  where transaction_status = 'SUCCESS'
+  -- and transaction_type IN ('CHARGE','CHARGEBACK')
+)
+
+Select v.*,
+k.customer_userid,
+k.trx_id,
+k.plan_price,
+k.amount_before_tax,
+k.sales_tax_amount
+from vertex_charges v
+Left join kafka_charges k
+  on v.`Transaction Synchronization ID`= k.trx_id
+  group by all
+
+-- COMMAND ----------
+
+select *
+from bolt_finint_prod.silver.fi_transactionv2_enriched
+where userid = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+
+-- COMMAND ----------
+
+select *
+from bolt_finint_prod.silver.fi_transaction_enriched
+where userId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
