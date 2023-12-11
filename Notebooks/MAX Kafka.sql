@@ -123,7 +123,7 @@ from bolt_finint_prod.silver.fi_transactionv2_enriched t
 LEFT JOIN exploded_st as ex on t.id = ex.id
 LEFT JOIN bolt_finint_prod.silver.fi_paymentmethodv2_enriched pm ON t.paymentMethodId = pm.id
 LEFT JOIN bolt_finint_prod.silver.fi_subscriptionv2_enriched s ON t.source.reference=s.globalSubscriptionId
-LEFT JOIN bolt_finint_prod.silver.fi_priceplan_enriched_kafka pp ON s.pricePlanId = pp.id
+LEFT JOIN bolt_finint_prod.silver.fi_priceplanv2_enriched pp ON s.pricePlanId = pp.id
 LEFT JOIN bolt_finint_prod.silver.fi_product_enriched pr ON pp.productid = pr.id
 LEFT JOIN bolt_finint_prod.silver.fi_campaignv2_enriched c ON pp.campaignId = c.id
 
@@ -187,6 +187,11 @@ HAVING sub_count > 1
 
 -- COMMAND ----------
 
+-- MAGIC %md
+-- MAGIC # Ad-hoc
+
+-- COMMAND ----------
+
 -- DBTITLE 1,Unbilled Susbcriptions - Kafka Silver
 Select
   s.userid,
@@ -212,11 +217,6 @@ group by
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC # Ad-hoc
-
--- COMMAND ----------
-
 -- DBTITLE 1,Refund Audit
 select
 ra.realm,
@@ -234,8 +234,9 @@ ra.paymentMethod.paymentType as payment_type,
 ra.paymentMethod.provider as Provider
 from bolt_finint_prod.silver.fi_refundaudit_enriched ra
 LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
--- where created::date >= current_date()-7
-where ra.customerUserId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+where created::date >= current_date()-7
+-- where ra.customerUserId = 'USERID:bolt:d9043782-e91e-4d4e-b5c9-680d79d143b6'
+-- where us.unpackedvalue.user.email LIKE "matthew.virga%"
 
 -- COMMAND ----------
 
@@ -257,26 +258,46 @@ kafka_charges as (
   where transaction_status = 'SUCCESS'
   -- and transaction_type IN ('CHARGE','CHARGEBACK')
 )
+,
+Kinesis_charges as (
+  select *
+  from bolt_finint_prod.silver.fi_transaction_enriched
+  where upper(status) = 'SUCCESS'
+)
 
 Select v.*,
-k.customer_userid,
-k.trx_id,
-k.plan_price,
-k.amount_before_tax,
-k.sales_tax_amount
+kf.customer_userid,
+kf.trx_id,
+kf.refund_source,
+kf.plan_price,
+kf.amount_before_tax,
+kf.sales_tax_amount,
+ki.userId,
+ki.merchantReferenceId,
+ki.id,
+ki.refundedTransactionId,
+ki.amount
 from vertex_charges v
-Left join kafka_charges k
-  on v.`Transaction Synchronization ID`= k.trx_id
+Left join kafka_charges kf
+  on v.`Transaction Synchronization ID`= kf.trx_id
+Left Join kinesis_charges ki
+  on v.`Transaction Synchronization ID`= ki.merchantReferenceId
   group by all
 
 -- COMMAND ----------
 
-select *
-from bolt_finint_prod.silver.fi_transactionv2_enriched
-where userid = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+select * from kafka_transactions
+where trx_id = '4e8b0dac-cd30-4f7b-b710-c4af9cc7972f'
 
 -- COMMAND ----------
 
-select *
-from bolt_finint_prod.silver.fi_transaction_enriched
-where userId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+select * 
+from kafka_transactions
+where customer_userId = 'USERID:bolt:6a7be2c4-f091-43e0-a326-5c108f834273'
+
+-- COMMAND ----------
+
+select * 
+from bolt_finint_prod.silver.fi_subscriptionv2_enriched
+where userId = 'USERID:bolt:6a7be2c4-f091-43e0-a326-5c108f834273'
+and globalSubscriptionId = 'dba17e69-e6a6-5cb3-8a27-c1dd74996b00'
