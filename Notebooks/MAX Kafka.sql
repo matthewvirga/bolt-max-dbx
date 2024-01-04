@@ -161,7 +161,7 @@ FROM Kafka_Transactions kt
          LEFT JOIN refunds ON kt.trx_id = refunds.previous_trx_id
          LEFT JOIN bolt_finint_prod.silver.fi_transaction_enriched tr ON kt.trx_id = tr.merchantReferenceId
 where 1=1
-    AND created_date >= '2023-05-22'
+    AND created_date >= '2023-10-01'
     AND transaction_status = 'SUCCESS'
     AND transaction_type = 'CHARGE'
     AND payment_provider IN ('STRIPE','PAYPAL')
@@ -184,11 +184,6 @@ where 1=1
   and record.subscription.status in ('STATUS_ACTIVE','STATUS_CANCELED')
 group by 1
 HAVING sub_count > 1
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Ad-hoc
 
 -- COMMAND ----------
 
@@ -217,6 +212,11 @@ group by
 
 -- COMMAND ----------
 
+-- MAGIC %md
+-- MAGIC # Ad-hoc
+
+-- COMMAND ----------
+
 -- DBTITLE 1,Refund Audit
 select
 ra.realm,
@@ -234,9 +234,7 @@ ra.paymentMethod.paymentType as payment_type,
 ra.paymentMethod.provider as Provider
 from bolt_finint_prod.silver.fi_refundaudit_enriched ra
 LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
-where created::date >= current_date()-7
--- where ra.customerUserId = 'USERID:bolt:d9043782-e91e-4d4e-b5c9-680d79d143b6'
--- where us.unpackedvalue.user.email LIKE "matthew.virga%"
+where created::date >= '2023-05-22'
 
 -- COMMAND ----------
 
@@ -283,21 +281,3 @@ Left join kafka_charges kf
 Left Join kinesis_charges ki
   on v.`Transaction Synchronization ID`= ki.merchantReferenceId
   group by all
-
--- COMMAND ----------
-
-select * from kafka_transactions
-where trx_id = '4e8b0dac-cd30-4f7b-b710-c4af9cc7972f'
-
--- COMMAND ----------
-
-select * 
-from kafka_transactions
-where customer_userId = 'USERID:bolt:6a7be2c4-f091-43e0-a326-5c108f834273'
-
--- COMMAND ----------
-
-select * 
-from bolt_finint_prod.silver.fi_subscriptionv2_enriched
-where userId = 'USERID:bolt:6a7be2c4-f091-43e0-a326-5c108f834273'
-and globalSubscriptionId = 'dba17e69-e6a6-5cb3-8a27-c1dd74996b00'
