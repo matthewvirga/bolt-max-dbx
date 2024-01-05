@@ -378,3 +378,126 @@ from bolt_finint_prod.latam_silver.fi_transactionv2_enriched
 )
 
 
+
+-- COMMAND ----------
+
+-- DBTITLE 1,PaymentMethod
+create or replace temporary view PaymentMethod AS
+
+select * from 
+(
+
+select
+
+id,
+realm,
+userId,
+created,
+provider,
+type,
+countryCode,
+providerAgreementReference,
+
+cardDetails.cardProvider as cardDetails_cardProvider,
+cardDetails.cardPaymentMethod as cardDetails_cardPaymentMethod,
+cardDetails.cardIssuingBank as cardDetails_cardIssuingBank,
+cardDetails.fundingSource as cardDetails_fundingSource,
+cardDetails.cardSummary as cardDetails_cardSummary,
+cardDetails.cardExpiry as cardDetails_cardExpiry,
+
+legacyPaymentMethodId,
+providerMerchantAccount,
+
+geoLocation.countryIso as geoLocation_countryIso,
+geoLocation.subdivisionIso as geoLocation_subdivisionIso,
+geoLocation.city as geoLocation_city,
+geoLocation.postalCode as geoLocation_postalCode,
+geoLocation.timeZone as geoLocation_timeZone,
+geoLocation.isAnonymized as geoLocation_isAnonymized,
+
+providerUserReference
+
+from bolt_finint_prod.silver.fi_paymentmethodv2_enriched
+
+UNION ALL
+
+select 
+
+id,
+realm,
+userId,
+created,
+provider,
+type,
+countryCode,
+providerAgreementReference,
+
+cardDetails.cardProvider as cardDetails_cardProvider,
+cardDetails.cardPaymentMethod as cardDetails_cardPaymentMethod,
+cardDetails.cardIssuingBank as cardDetails_cardIssuingBank,
+cardDetails.fundingSource as cardDetails_fundingSource,
+cardDetails.cardSummary as cardDetails_cardSummary,
+cardDetails.cardExpiry as cardDetails_cardExpiry,
+
+legacyPaymentMethodId,
+providerMerchantAccount,
+
+geoLocation.countryIso as geoLocation_countryIso,
+geoLocation.subdivisionIso as geoLocation_subdivisionIso,
+geoLocation.city as geoLocation_city,
+geoLocation.postalCode as geoLocation_postalCode,
+geoLocation.timeZone as geoLocation_timeZone,
+geoLocation.isAnonymized as geoLocation_isAnonymized,
+
+providerUserReference
+
+from bolt_finint_prod.latam_silver.fi_paymentmethodv2_enriched
+
+)
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## Global Reports
+-- MAGIC This creates global combined reports
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Active Subscribers
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Transactions Extract
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Acquired Subscribers
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Plan Transitions
+
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## Control Reports
+-- MAGIC These control reports are necessary for monitoring the billing system's overall health
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Duplicate Transactions
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Duplicate Subscriptions
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Unbilled Subscriptions
+
