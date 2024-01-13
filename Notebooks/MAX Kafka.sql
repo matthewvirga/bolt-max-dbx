@@ -123,7 +123,7 @@ from bolt_finint_prod.silver.fi_transactionv2_enriched t
 LEFT JOIN exploded_st as ex on t.id = ex.id
 LEFT JOIN bolt_finint_prod.silver.fi_paymentmethodv2_enriched pm ON t.paymentMethodId = pm.id
 LEFT JOIN bolt_finint_prod.silver.fi_subscriptionv2_enriched s ON t.source.reference=s.globalSubscriptionId
-LEFT JOIN bolt_finint_prod.silver.fi_priceplan_enriched_kafka pp ON s.pricePlanId = pp.id
+LEFT JOIN bolt_finint_prod.silver.fi_priceplanv2_enriched pp ON s.pricePlanId = pp.id
 LEFT JOIN bolt_finint_prod.silver.fi_product_enriched pr ON pp.productid = pr.id
 LEFT JOIN bolt_finint_prod.silver.fi_campaignv2_enriched c ON pp.campaignId = c.id
 
@@ -161,7 +161,7 @@ FROM Kafka_Transactions kt
          LEFT JOIN refunds ON kt.trx_id = refunds.previous_trx_id
          LEFT JOIN bolt_finint_prod.silver.fi_transaction_enriched tr ON kt.trx_id = tr.merchantReferenceId
 where 1=1
-    AND created_date >= '2023-05-22'
+    AND created_date >= '2023-10-01'
     AND transaction_status = 'SUCCESS'
     AND transaction_type = 'CHARGE'
     AND payment_provider IN ('STRIPE','PAYPAL')
@@ -234,8 +234,7 @@ ra.paymentMethod.paymentType as payment_type,
 ra.paymentMethod.provider as Provider
 from bolt_finint_prod.silver.fi_refundaudit_enriched ra
 LEFT JOIN bolt_finint_prod.silver.s2s_user_entities us ON ra.refunderUserId=us.unpackedValue.user.userid
--- where created::date >= current_date()-7
-where ra.customerUserId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
+where created::date >= '2023-05-22'
 
 -- COMMAND ----------
 
@@ -257,26 +256,28 @@ kafka_charges as (
   where transaction_status = 'SUCCESS'
   -- and transaction_type IN ('CHARGE','CHARGEBACK')
 )
+,
+Kinesis_charges as (
+  select *
+  from bolt_finint_prod.silver.fi_transaction_enriched
+  where upper(status) = 'SUCCESS'
+)
 
 Select v.*,
-k.customer_userid,
-k.trx_id,
-k.plan_price,
-k.amount_before_tax,
-k.sales_tax_amount
+kf.customer_userid,
+kf.trx_id,
+kf.refund_source,
+kf.plan_price,
+kf.amount_before_tax,
+kf.sales_tax_amount,
+ki.userId,
+ki.merchantReferenceId,
+ki.id,
+ki.refundedTransactionId,
+ki.amount
 from vertex_charges v
-Left join kafka_charges k
-  on v.`Transaction Synchronization ID`= k.trx_id
+Left join kafka_charges kf
+  on v.`Transaction Synchronization ID`= kf.trx_id
+Left Join kinesis_charges ki
+  on v.`Transaction Synchronization ID`= ki.merchantReferenceId
   group by all
-
--- COMMAND ----------
-
-select *
-from bolt_finint_prod.silver.fi_transactionv2_enriched
-where userid = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
-
--- COMMAND ----------
-
-select *
-from bolt_finint_prod.silver.fi_transaction_enriched
-where userId = 'USERID:bolt:cd42d638-e831-4361-a34a-34d5624cbaa6'
