@@ -104,7 +104,7 @@ pm.cardDetails.cardPaymentMethod as Card_pm,
 pm.cardDetails.cardIssuingBank as card_bank,
 case
   when t.provider = 'PAYMENT_PROVIDER_PAYPAL' then 'PAYPAL' 
-  else UPPER(pm.cardDetails.fundingSource) 
+  else UPPER(pm.cardDetails.fundingSource)
 end as card_funding,
 
 pm.countryCode as Payment_Country,
@@ -205,8 +205,9 @@ from
 where
   1 = 1
   and direct.paymentprovider is not null
-  and nextrenewaldate :: date < current_date() -14
+  and nextrenewaldate :: date < current_date() -18
   and s.status in ('STATUS_ACTIVE', 'STATUS_CANCELED')
+  and pp.period != 'PERIOD_YEAR'
 group by
   all
 
