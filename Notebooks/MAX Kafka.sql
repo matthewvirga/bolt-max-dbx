@@ -282,3 +282,74 @@ Left join kafka_charges kf
 Left Join kinesis_charges ki
   on v.`Transaction Synchronization ID`= ki.merchantReferenceId
   group by all
+
+-- COMMAND ----------
+
+select
+created_date,
+payment_Provider,
+card_provider,
+card_funding,
+count(trx_id) as quantity,
+sum(charged_amount) as total_amount 
+from kafka_transactions
+where created_date BETWEEN '2023-12-01' AND '2023-12-31'
+and transaction_status = 'SUCCESS'
+and transaction_type = 'CHARGE'
+group by 1,2,3,4
+
+-- COMMAND ----------
+
+select
+  case
+    when marketid = 'TG_MARKET_UNITED_STATES' then 'AMER'
+    else 'LATAM'
+  end as Region,
+  marketId as market,
+  pp.id as priceplanid,
+  pr.addOnIds [0] as addOnIds,
+  pr.mainProductIds [0] as mainProductIds,
+  pr.productType as producttype,
+  pr.name as productname,
+  pr.tiertype as tiertype,
+  if(pp.provider = 'WEB', 'Direct', provider) as Provider,
+  ca.name as campaignName,
+  pp.internalName as internalname,
+  pp.pricePlanType as priceplantype,
+  pp.period as paymentPeriod,
+  pp.numberOfInstalments,
+  pp.numberOfPeriodsBetweenPayments,
+  coalesce(pp.price, 0) as price,
+  pp.currencyDecimalPoints,
+  CASE
+    WHEN pp.currencyDecimalPoints IS NOT NULL THEN pp.price / POWER(10, pp.currencyDecimalPoints)
+    ELSE coalesce(pp.price, 0)
+  END AS ConvertedPrice,
+  pp.currency as currency
+from
+  bolt_finint_prod.silver.fi_priceplanv2_enriched pp
+  LEFT JOIN bolt_finint_prod.silver.fi_product_enriched pr on pp.productid = pr.id
+  LEFT JOIN bolt_finint_prod.silver.fi_campaignv2_enriched ca on pp.id = ca.pricePlanId
+where marketid != 'TG_MARKET_UNITED_STATES'
+group by
+  all
+
+
+-- COMMAND ----------
+
+select t.priceplanid, pp.market
+from bolt_finint_prod.silver.fi_transactionv2_enriched t
+left join bolt_finint_prod.silver.fi_priceplanv2_enriched pp on t.priceplanid=pp.id
+where source.reference IN
+('936af8ca-9111-5399-8e3f-171dd46f5072',
+'d7f36380-a2ab-5934-aca1-0c020558f004',
+'35b186c2-0743-5520-9c0f-79543d3a0c1d',
+'037dc91a-a118-5f2f-9626-e48fa6b574ca',
+'ff16012a-c024-5cff-8633-610468d3baa9',
+'507dcf0c-6e99-5a8f-a99e-bda8df54f5a3',
+'7f948130-caa1-57ee-bb18-bfa5ed29939e',
+'e014b8c5-427d-5c64-aa9e-fede1588f793',
+'5fed6f32-a407-5245-8193-629b69111b6a',
+'4c2ac868-9ca6-5bb7-9ec4-1daddb36da98')
+group by 1,2
+

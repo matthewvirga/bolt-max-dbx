@@ -59,6 +59,8 @@ with combined_tx as
 
 
 
+
+
 -- COMMAND ----------
 
 -- DBTITLE 1,Subscriptions
@@ -725,17 +727,3 @@ where 0=0
 
 -- DBTITLE 1,Unbilled Subscriptions
 
-
--- COMMAND ----------
-
-select distinct authProviders
-from bolt_finint_prod.silver.fi_user_enriched
-
--- COMMAND ----------
-
-select 
-authProviders[0].providername,
-authProviders[0].partnername,
-count(*)
-from bolt_finint_prod.silver.fi_user_enriched
-group by 1,2
