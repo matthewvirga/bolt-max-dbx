@@ -17,6 +17,7 @@ t.record.transaction.source.reference as source_reference,
 t.record.transaction.id as transaction_id,
 t.record.transaction.stateTransitions[0].successful.providerPaymentReference,
 t.record.transaction.currentstate.successful.providerPaymentReference,
+ki.vendorReferenceId as vendorref_kinesis,
 pr.unpackedValue.product.name as product_name,
 pr.unpackedValue.product.description as product_desc,
 pr.unpackedValue.product.productprices[0].period as product_period,
@@ -60,14 +61,17 @@ left join bolt_payments_prod.gold.s2s_product_catalog_entities pr
 left join bolt_dcp_prod.beam_latam_bronze.raw_s2s_user_entities u
   on t.record.transaction.userid=u.record.`user`.userid
 
+left join bolt_finint_prod.latam_silver.fi_transaction_enriched ki
+  on t.record.transaction.id = ki.merchantReferenceId
+
 where 1=1
 -- and t.record.transaction.stateTransitions[0].occurred::date >= '2023-12-08'
 -- and lower(pr.unpackedValue.product.name) not like ('%legacy%')
-AND t.record.transaction.userid = 'USERID:bolt:65b58af3-cb63-4069-9ad6-b8d176c04836'
+AND t.record.transaction.userid = 'USERID:bolt:7b930568-36da-4d93-81ca-c321b47a4e9d'
 -- AND t.record.transaction.invoiceid is not null
 
 -- COMMAND ----------
 
-select *
+select record.transaction.stateTransitions, record.transaction.currentState
 from bolt_dcp_prod.any_latam_bronze.raw_s2s_payment_transaction_entities
-where record.transaction.userid = 'USERID:bolt:4a98b69d-7a33-4867-a913-b0c45dccd00d'
+where record.transaction.userid = 'USERID:bolt:2e5f7ca9-d311-40ad-9bd1-28e561709f50'

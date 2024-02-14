@@ -334,22 +334,3 @@ where marketid != 'TG_MARKET_UNITED_STATES'
 group by
   all
 
-
--- COMMAND ----------
-
-select t.priceplanid, pp.market
-from bolt_finint_prod.silver.fi_transactionv2_enriched t
-left join bolt_finint_prod.silver.fi_priceplanv2_enriched pp on t.priceplanid=pp.id
-where source.reference IN
-('936af8ca-9111-5399-8e3f-171dd46f5072',
-'d7f36380-a2ab-5934-aca1-0c020558f004',
-'35b186c2-0743-5520-9c0f-79543d3a0c1d',
-'037dc91a-a118-5f2f-9626-e48fa6b574ca',
-'ff16012a-c024-5cff-8633-610468d3baa9',
-'507dcf0c-6e99-5a8f-a99e-bda8df54f5a3',
-'7f948130-caa1-57ee-bb18-bfa5ed29939e',
-'e014b8c5-427d-5c64-aa9e-fede1588f793',
-'5fed6f32-a407-5245-8193-629b69111b6a',
-'4c2ac868-9ca6-5bb7-9ec4-1daddb36da98')
-group by 1,2
-
