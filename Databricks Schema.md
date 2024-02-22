@@ -63,8 +63,33 @@ bolt_subscriptions_prod.gold.s2s_subscription_payment_failure_events
 
 bolt_gauth_prod.gold.s2s_capability_definition_entities
 
+---
+## Bolt Real time FinInt Tables - Silver
+---
+### Global (not split by Market):
+---
+bolt_finint_prod.silver.fi_campaignv2_enriched
+
+bolt_finint_prod.silver.fi_priceplanv2_enriched
+
+bolt_finint_prod.silver.fi_priceplanv2_enriched
 
 
+### US:
+---
+#### Untokenized data:
+bolt_finint_prod.silver.fi_subscriptionv2_enriched
 
+bolt_finint_prod.silver.fi_transactionv2_enriched
 
+bolt_finint_prod.silver.fi_paymentmethodv2_enriched
+
+### LATAM:
+---
+#### Untokenized data:
+bolt_finint_prod.latam_silver.fi_subscriptionv2_enriched
+
+bolt_finint_prod.latam_silver.fi_transactionv2_enriched
+
+bolt_finint_prod.latam_silver.fi_paymentmethodv2_enriched
 
