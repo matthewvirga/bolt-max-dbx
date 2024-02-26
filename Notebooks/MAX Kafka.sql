@@ -334,3 +334,73 @@ where marketid != 'TG_MARKET_UNITED_STATES'
 group by
   all
 
+
+-- COMMAND ----------
+
+create or replace temporary view Subscriptions as
+(
+select
+realm,
+globalSubscriptionId,
+userId,
+status,
+startDate,
+pricePlanId,
+nextRenewalDate,
+endDate,
+cancellationDate,
+terminationDate,
+terminationReason,
+terminationCode,
+startedWithFreeTrial,
+nextRetryDate,
+origin,
+-- subscribedInTerritory,
+previousSubscriptionGlobalId,
+paymentMethodId,
+inFreeTrial,
+subscribedInSite,
+purchaseTerritory,
+
+direct.verifiedHomeTerritory.expirationDate as direct_verifiedHomeTerritory_expirationDate,
+direct.verifiedHomeTerritory.code as direct_verifiedHomeTerritory_code,
+direct.subscriptionInstallment.remainingInstalments as direct_subscriptionInstallment_remainingInstallments,
+direct.subscriptionInstallment.renewalCycleStartDate as direct_subscriptionInstallment_renewalCycleStartDate,
+direct.campaignId as direct_campaignId,
+direct.campaignCode as direct_campaignCode,
+direct.minimumTermEndDate as direct_minimumTermEndDate,
+direct.affiliate as direct_affiliate,
+direct.paymentProvider as direct_paymentProvider,
+direct.subscriptionType as direct_subscriptionType,
+direct.terminationAllowed as direct_terminationAllowed,
+direct.affiliateStartDate as direct_affiliateStartDate,
+direct.pricePlanChangeDate as direct_pricePlanChangeDate,
+direct.paymentMethodId as direct_paymentMethodId,
+direct.minimunTermEndDate as direct_minimunTermEndDate,
+
+iap.verifiedHomeTerritory.expirationDate as iap_verifiedHomeTerritory_expirationDate,
+iap.verifiedHomeTerritory.code as iap_verifiedHomeTerritory_code,
+iap.campaignId as iap_campaignId,
+iap.campaignCode as iap_campaignCode,
+iap.originalProviderPaymentReference as iap_originalProviderPaymentReference,
+iap.providerUserId as iap_providerUserId,
+iap.provider as iap_provider,
+iap.iapSubscriptionId as iap_iapSubscriptionId,
+iap.pauseDate as iap_pauseDate,
+iap.pauseCode as iap_pauseCode,
+iap.pauseReason as iap_pauseReason,
+
+partner.gauthSubscriptionId as partner_gauthSubscriptionId,
+partner.gauthUserId as partner_gauthUserId,
+partner.partnerId as partner_partnerId,
+partner.sku as partner_sku
+
+from bolt_finint_prod.latam_silver.fi_subscriptionv2_enriched
+group by all
+)
+
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC
