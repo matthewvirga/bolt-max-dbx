@@ -286,6 +286,7 @@ with latest_charge as (
   from transactions t
   left join bolt_finint_prod.latam_silver.fi_paymentmethodv2_enriched pm on t.paymentMethodId = pm.id
   where event_type IN ('SUCCESSFUL','UNKNOWN','PENDING','FAILED', 'RETRYING')
+  and charged_amount != 0
   QUALIFY ROW_NUMBER() OVER(PARTITION BY t.source_reference ORDER BY t.created_date desc) = 1
 )
 
@@ -646,10 +647,8 @@ Having charged_amount - plan_price > 0
 
 -- COMMAND ----------
 
--- DBTITLE 1,In grace check - high level
-select status, count(distinct globalsubscriptionid)
-from Active_Retail_subscriptions
-where nextrenewaldate <= '2024-02-26'
-and last_charge_result in ('FAILED','RETRYING','UNKNOWN')
-and upper(subscribedInSite) = 'HBO_MAX'
-group by all
+-- DBTITLE 1,Renewals Check
+select *
+from transactions
+where created_date >= '2024-02-27T09:00:00.000+00:00'
+and payment_type = 'AUTOMATED'
