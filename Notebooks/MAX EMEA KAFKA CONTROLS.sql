@@ -502,7 +502,7 @@ group by all
 
 -- DBTITLE 1,Recurring Job Check
 select 
-DATE_FORMAT(t.created_date, 'yyyy-MM-dd') AS date,
+DATE_FORMAT(t.created_date, 'yyyy-MM-dd') AS date_ts,
 DATE_FORMAT(t.created_date, 'HH') AS hour,
 t.event_type,
 t.product_type,
@@ -525,49 +525,44 @@ and t.event_type in (
   'RETRYING'
 )
 group by all
-order by date desc, hour desc
+order by date_ts desc, hour desc;
 
--- COMMAND ----------
-
--- DBTITLE 1,Recurring with details
-select 
-DATE_FORMAT(t.created_date, 'yyyy-MM-dd') AS date,
-DATE_FORMAT(t.created_date, 'HH') AS hour,
-t.event_type,
-t.product_type,
-t.payment_type,
-t.userid,
-t.event_id
-from transactions_extract t
-left join subscriptions s on t.globalsubscriptionid = s.globalsubscriptionid
-where t.created_date >= '2024-05-21T01:00:00.000+00:00'
-and t.payment_provider in (
-  'PAYPAL',
-  'ADYEN'
-)
-and t.payment_type = 'AUTOMATED'
-and t.launch_wave is null
-and t.event_type in (
-  'SUCCESSFUL',
-  'FAILED',
-  'RETRYING'
-)
--- and product_type = 'ADD_ON'
-group by all
-order by date desc, hour desc
+-- select 
+-- DATE_FORMAT(t.created_date, 'yyyy-MM-dd') AS date,
+-- DATE_FORMAT(t.created_date, 'HH') AS hour,
+-- t.event_type,
+-- t.product_type,
+-- t.payment_type,
+-- t.userid,
+-- t.event_id
+-- from transactions_extract t
+-- left join subscriptions s on t.globalsubscriptionid = s.globalsubscriptionid
+-- where t.created_date >= '2024-05-21T01:00:00.000+00:00'
+-- and t.payment_provider in (
+--   'PAYPAL',
+--   'ADYEN'
+-- )
+-- and t.payment_type = 'AUTOMATED'
+-- and t.launch_wave is null
+-- and t.event_type in (
+--   'SUCCESSFUL',
+--   'FAILED',
+--   'RETRYING'
+-- )
+-- -- and product_type = 'ADD_ON'
+-- group by all
+-- order by date desc, hour desc;
 
 -- COMMAND ----------
 
 -- DBTITLE 1,Successful Volume Check (New + Recurring)
 select
-case when event_type = 'REFUNDED' then transaction_date::date
-when event_type = 'SUCCESSFUL' then created_date::date
-end as date,
+transaction_date::date as date,
 event_type,
 launch_wave,
 count(event_id) as quantity
 from transactions_extract
-where created_date >= '2024-05-20T23:00:00.000+00:00'
+where transaction_date >= '2024-05-20T23:00:00.000+00:00'
 and event_type IN ('SUCCESSFUL','REFUNDED')
 group by all
 
@@ -579,7 +574,7 @@ select
 nextrenewaldate::date,
 count(globalsubscriptionid)
 from active_subscriptions
-where nextrenewaldate < current_date()
+where nextrenewaldate <= current_date()
 and status = 'ACTIVE'
 and provider_type = 'Direct'
 group by all
@@ -702,70 +697,74 @@ having subscription_count > 1
 
 -- DBTITLE 1,Unbilled Subscriptions
 select
-  userid,
-  globalsubscriptionid,
-  subscribedinsite,
-  Provider_type,
-  provider_name,
-  product_type,
-  productname,
-  campaignname,
-  internalname,
-  status,
-  startdate,
-  nextrenewaldate,
-  nextretrydate,
-  plan_price,
-  last_charge,
-  last_charge_result,
-  last_result_reason,
-  last_invoice_start_date,
-  last_invoice_end_date,
-  last_invoice_amount,
-  priceplan_market,
-  launch_wave,
-from Active_subscriptions
+  s.userid,
+  u.record.user.email as user_email,
+  s.globalsubscriptionid,
+  s.subscribedinsite,
+  s.Provider_type,
+  s.provider_name,
+  s.product_type,
+  s.productname,
+  s.campaignname,
+  s.internalname,
+  s.status,
+  s.startdate::date,
+  s.nextrenewaldate::date,
+  s.nextretrydate::date,
+  s.plan_price,
+  s.last_charge::date,
+  s.last_charge_result,
+  s.last_result_reason,
+  s.last_invoice_start_date::date,
+  s.last_invoice_end_date::date,
+  s.last_invoice_amount,
+  s.priceplan_market,
+  s.launch_wave
+from Active_subscriptions s
+left join bolt_dcp_prod.beam_emea_bronze.raw_s2s_user_entities u  
+  on s.userid = u.record.user.userid
 where 1=1
   -- and launch_wave is null
-  and nextrenewaldate < current_date()-16
+  and nextrenewaldate <= current_date()
   and nextretrydate is null
   and plan_price > 0
 group by all
 Having provider_type = 'Direct'
 
-
-
 -- COMMAND ----------
 
 -- DBTITLE 1,Next Renewal Date Validation
 select
-  userid,
-  globalsubscriptionid,
-  Provider_type,
-  provider_name,
-  subscribedinsite,
-  status,
-  startdate,
-  nextretrydate,
-  tier_type,
-  productname,
-  paymentperiod,
-  numberOfPeriodsBetweenPayments,
-  nextrenewaldate,
+  s.userid,
+  u.record.user.email as user_email,
+  s.globalsubscriptionid,
+  s.Provider_type,
+  s.provider_name,
+  s.subscribedinsite,
+  s.status,
+  s.startdate,
+  s.nextretrydate,
+  s.tier_type,
+  s.productname,
+  s.paymentperiod,
+  s.numberOfPeriodsBetweenPayments,
+  s.nextrenewaldate,
 
   case 
-    when paymentperiod = 'MONTH' and months_between(nextrenewaldate, current_date()) <= numberOfPeriodsBetweenPayments THEN 'as expected'
-    when paymentperiod = 'YEAR' and months_between(nextrenewaldate, current_date()) <= (numberOfPeriodsBetweenPayments * 12) THEN 'as expected'
+    when s.paymentperiod = 'MONTH' and months_between(s.nextrenewaldate, current_date()) <= s.numberOfPeriodsBetweenPayments THEN 'as expected'
+    when s.paymentperiod = 'YEAR' and months_between(s.nextrenewaldate, current_date()) <= (s.numberOfPeriodsBetweenPayments * 12) THEN 'as expected'
     else 'not expected'
   end as next_renewal_check,
 
-  last_charge,
-  last_charge_result,
-  last_result_reason,
-  last_invoice_start_date,
-  last_invoice_end_date,
-  priceplan_market
-from Active_subscriptions
+  s.last_charge,
+  s.last_charge_result,
+  s.last_result_reason,
+  s.last_invoice_start_date,
+  s.last_invoice_end_date,
+  s.priceplan_market
+from Active_subscriptions s
+left join bolt_dcp_prod.beam_emea_bronze.raw_s2s_user_entities u  
+  on s.userid = u.record.user.userid
 where 1=1
 and paymentperiod in ('MONTH','YEAR')
 and launch_wave is null
@@ -907,201 +906,6 @@ group by
   country
 order by
   source desc
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Financial Reports
-
--- COMMAND ----------
-
--- DBTITLE 1,Active DTC Subscribers Summary Report
-Select 
-realm,
-origin,
-startedWithFreeTrial,
-inFreeTrial,
-subscribedInSite,
-purchaseTerritory,
-status,
-provider_type,
-provider_name,
-last_payment_provider,
-affiliate,
-priceplan_market,
-launch_wave,
-product_type,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-numberOfPeriodsBetweenPayments,
-plan_price,
-plan_currency,
-startDate::date,
-direct_affiliateStartDate::date,
-nextRenewalDate::date,
-nextRetryDate::date,
-endDate::date,
-cancellationDate::date,
-card_provider,
-card_type,
-payment_provider,
-last_charge::date,
-last_charge_result,
-last_result_reason,
-last_invoice_start_date::date,
-last_invoice_end_date::date,
--- last_invoice_amount,
-count(globalsubscriptionid) as Subscription_count
--- globalsubscriptionid
--- previousSubscriptionGlobalId
--- userid
-from Active_Subscriptions
-where provider_type = 'Direct'
--- and launch_wave <> 'WAVE 2'
-group by all
-
--- COMMAND ----------
-
--- DBTITLE 1,Active DTC Subscribers Detailed Report
-Select 
-realm,
-origin,
-startedWithFreeTrial,
-inFreeTrial,
-subscribedInSite,
-purchaseTerritory,
-status,
-provider_type,
-provider_name,
-last_payment_provider,
-affiliate,
-priceplan_market,
-launch_wave,
-product_type,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-numberOfPeriodsBetweenPayments,
-plan_price,
-plan_currency,
-startDate::date,
-direct_affiliateStartDate::date,
-nextRenewalDate::date,
-nextRetryDate::date,
-endDate::date,
-cancellationDate::date,
-card_provider,
-card_type,
-payment_provider,
-last_charge::date,
-last_charge_result,
-last_result_reason,
-last_invoice_start_date::date,
-last_invoice_end_date::date,
-last_invoice_amount,
-globalsubscriptionid,
-baseSubscriptionId,
-previousSubscriptionGlobalId,
-userid
-from Active_Subscriptions
-where provider_type = 'Direct'
-group by all
-
--- COMMAND ----------
-
--- DBTITLE 1,DTC Transactions Summary Report
-select 
-realm,
-created_Date::date,
-transaction_date::date,
-invoice_start_date::date,
-invoice_end_date::date,
-source_type,
-currency,
-tax_country_code,
-event_type,
-payment_provider,
-cardProvider,
-fundingSource,
-payment_type,
-priceplan_market,
-launch_wave,
-product_type,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-period_frequency,
-plan_price,
-plan_currency,
-count(event_id) as quantity,
-round(sum(charged_amount),2) as total_charged,
-round(sum(tax_amount),2) as total_tax,
-round(sum(revenue_amount),2) as total_revenue
-from Transactions_Extract
-where created_date >= '2024-05-20T23:00:00.000+00:00'
--- and launch_wave = 'WAVE 2'
--- and invoice_start_date::date >= '2024-01-01'
-group by all
--- and event_type in ('SUCCESSFUL','REFUNDED','CHARGEBACK')
-
--- COMMAND ----------
-
--- DBTITLE 1,DTC Transactions Detail Report
-select 
-realm,
-created_date::date,
-transaction_date::date,
-invoice_start_date::date,
-invoice_end_date::date,
-source_type,
-direct_affiliate,
-currency,
-tax_country_code,
-event_type,
-payment_provider,
-cardProvider,
-fundingSource,
-payment_type,
-priceplan_market,
-launch_wave,
-product_type,
-productname,
-tier_type,
-affiliate,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-period_frequency,
-plan_price,
-plan_currency,
-userid,
-event_id,
-provider_Reference_id,
-original_transaction_id,
-charged_amount,
-tax_amount,
-revenue_amount
-from Transactions_Extract
-where created_date >= '2024-05-20T23:00:00.000+00:00'
--- and invoice_start_date::date >= '2024-05-20'
-and event_type IN (
-  'SUCCESSFUL',
-  'REFUNDED',
-  'CHARGEBACK'
-)
--- and UPPER(productname) not like '%LEGACY%'
-group by all
 
 -- COMMAND ----------
 
@@ -1403,144 +1207,3 @@ left join refunds r on t.event_id = r.original_transaction_id
   and UPPER(productname) not like '%LEGACY%'
 group by all
 Having (charged_amount + total_refunded) > 0
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Ad-hoc
-
--- COMMAND ----------
-
--- DBTITLE 1,Total Active DTC Subscribers by Market
-select 
-priceplan_market,
-launch_wave,
-status,
-count(distinct globalsubscriptionid)
-from Active_subscriptions
-where provider_type = 'Direct'
-group by 1,2,3
-
--- COMMAND ----------
-
--- DBTITLE 1,Royalties Report
-select 
-realm,
-case when event_type = 'SUCCESSFUL' then 'CHARGE'
-     when event_type = 'REFUNDED' then 'REFUND'
-     when event_type = 'CHARGEBACK' then 'CHARGEBACK'
-end as line_type,
-transaction_date::date,
-invoice_start_date::date as invoice_date,
-currency,
-replace(priceplan_market,'_',' ') as country,
-productname,
-internalname,
-campaignName,
-payment_provider,
-plan_price,
-count(event_id) as quantity,
-round(SUM(revenue_amount),2) as revenue_amount,
-round(SUM(tax_amount),2) as vat_tax_amount,
-invoice_start_date::date as rule_start_date,
-invoice_end_date::date as rule_end_date,
-tax_country_code,
-round(SUM(charged_amount),2) as total
-from transactions_extract
-where 
-invoice_start_date::date >= ADD_MONTHS(TRUNC(CURRENT_DATE, 'MM'), -1)
-AND invoice_start_date::date < TRUNC(CURRENT_DATE, 'MM')
-and event_type IN ('SUCCESSFUL','REFUNDED','CHARGEBACK')
-group by all
-
--- COMMAND ----------
-
--- DBTITLE 1,LTO Scenario Check
-with latest_charge as (
-  select 
-  t.event_id,
-  t.event_type,
-  t.event_state_reason,
-  t.payment_provider,
-  t.paymentmethodid,
-  t.source_reference,
-  pm.cardDetails.cardProvider as card_provider,
-  pm.cardDetails.fundingSource as card_type,
-  t.created_date,
-  t.event_occurred_date,
-  t.service_period_startdate,
-  t.service_period_enddate,
-  (coalesce(t.charged_amount, 0)) /100 as charged_amount,
-  (coalesce(t.tax_amount, 0)) /100 as tax_amount
-
-  from transactions t
-  left join bolt_finint_prod.beam_emea_silver.fi_paymentmethodv2_enriched pm on t.paymentMethodId = pm.id
-  where event_type IN ('SUCCESSFUL','UNKNOWN','PENDING','FAILED', 'RETRYING')
-  and charged_amount != 0
-  and t.created_date < '2024-04-01'
-  QUALIFY ROW_NUMBER() OVER(PARTITION BY t.source_reference ORDER BY t.created_date desc) = 1
-)
-
-select
-s.realm,
-s.origin,
-s.startedWithFreeTrial,
-s.inFreeTrial,
-s.subscribedInSite,
-s.purchaseTerritory,
-replace(s.status,'STATUS_','') as status,
-
-case
-  when s.direct_paymentProvider is not null then 'Direct'
-  when s.iap_provider is not null then 'IAP'
-  when s.partner_partnerId is not null then 'Partner'
-end as provider_type,
-
-coalesce(p.provider,'WEB') as provider_name,
-
-lc.payment_provider as last_payment_provider,
-
-s.direct_affiliate as affiliate,
-
-p.priceplanid,
-replace(p.market,'TG_MARKET_','')as priceplan_market,
-p.productname,
-replace(p.tiertype,'TIER_TYPE_','') as tier_type,
-p.campaignName,
-p.internalname,
-replace(p.priceplantype,'TYPE_','') as priceplantype,
-replace(p.paymentPeriod,'PERIOD_','') as paymentperiod,
-p.numberOfPeriodsBetweenPayments,
-p.plan_price as plan_price,
-p.currency as plan_currency,
-
-s.startDate::date,
-s.direct_affiliateStartDate::date,
-s.nextRenewalDate::date,
-s.nextRetryDate::date,
-s.endDate::date,
-s.cancellationDate::date,
-UPPER(lc.card_provider) as card_provider,
-UPPER(lc.card_type) as card_type,
-lc.payment_provider,
-lc.created_date::date as last_charge,
-lc.event_type as last_charge_result,
-lc.event_state_reason as last_result_reason,
-lc.service_period_startdate::date as last_invoice_start_date,
-lc.service_period_enddate::date as last_invoice_end_date,
-lc.charged_amount as last_invoice_amount,
-lc.tax_amount as last_tax_amount,
-s.globalsubscriptionid,
-s.previousSubscriptionGlobalId,
-s.userid
-
-from Subscriptions s
-left join plans p on s.priceplanid = p.priceplanid
-left join latest_charge lc on s.globalsubscriptionid = lc.source_reference
-
-where 1=1
-and s.status IN ('STATUS_ACTIVE','STATUS_CANCELED')
-and s.startDate::date < '2024-05-20'
-group by all
-having provider_type in ('Direct')
-and plan_price - last_invoice_amount < 0
