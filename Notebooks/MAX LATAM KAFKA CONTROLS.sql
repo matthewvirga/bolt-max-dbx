@@ -64,10 +64,24 @@ pp.realm,
     else 'EMEA'
   end as Region,
   marketId as market,
+    case 
+    when marketid IN ('TG_MARKET_NETHERLANDS','TG_MARKET_POLAND','TG_MARKET_FRANCE','TG_MARKET_BELGIUM') then 'WAVE 2'
+    else null
+  end as launch_wave,
   pp.id as priceplanid,
   pr.addOnIds [0] as addOnIds,
   pr.mainProductIds [0] as mainProductIds,
+  pr.bundlingMemberIds [0] as bundlingMemberIds,
+  pr.contractId,
+  pr.bundle as bundle,
+  pr.fulfillerPartnerId,
+  pr.fulfillerPartnerSku,
   pr.productType as producttype,
+  pr.businessType,
+  pr.businessPlatform,
+  pr.businessBrand,
+  pr.revenueType,
+  pr.businessCase,
   pr.name as productname,
   pr.tiertype as tiertype,
   pp.provider as Provider,
@@ -81,7 +95,8 @@ pp.realm,
   coalesce(pp.price, 0) as price,
   coalesce(pp.currencyDecimalPoints,0) as currencyDecimalPoints,
   coalesce(pp.price, 0) / POWER(10, coalesce(pp.currencyDecimalPoints,0)) AS plan_price,
-  pp.currency as currency
+  pp.currency as currency,
+  pr.capabilitiesProvided
 from
   bolt_finint_prod.silver.fi_priceplanv2_enriched pp
   LEFT JOIN bolt_finint_prod.silver.fi_product_enriched pr on pp.productid = pr.id
@@ -176,6 +191,7 @@ end as event_id,
 -- st.event.refunded.refundReference as refund_id,
 
 case
+  when st.event.refunding.providerRefundReference is not null then id
   when st.event.refunded.providerRefundReference is not null then id
   when st.event.chargeback.providerChargebackReference is not null then id
 end as original_transaction_id,
@@ -239,8 +255,8 @@ case
   when st.event.pending.providerPaymentReference is not null then 'PENDING'
   when st.event.successful.providerPaymentReference is not null then 'SUCCESSFUL'
   when st.event.canceled.reason is not null then 'CANCELLED'
-  when st.event.failed.providerPaymentReference is not null then 'FAILED'
-  when st.event.retrying.nextretry is not null then 'RETRYING'
+  when (st.event.failed.providerPaymentReference is not null OR st.event.failed.reason is not null) then 'FAILED'
+  when (st.event.retrying.nextretry is not null OR st.event.retrying.reason is not null) then 'RETRYING'
   when st.event.refunding.source is not null then 'REFUNDING'
   when st.event.refunded.providerRefundReference is not null then 'REFUNDED'
   when st.event.refundFailed.reason is not null then 'REFUND FAILED'
@@ -435,6 +451,7 @@ t.currency,
 UPPER(t.tax_country_code) as tax_country_code,
 t.event_type,
 t.payment_provider,
+s.direct_affiliate,
 pm.cardDetails.cardProvider,
 pm.cardDetails.fundingSource,
 t.payment_type,
@@ -449,24 +466,16 @@ replace(p.paymentPeriod,'PERIOD_','') as paymentperiod,
 p.numberOfPeriodsBetweenPayments as period_frequency,
 p.plan_price as plan_price,
 p.currency as plan_currency,
+p.currencyDecimalPoints,
 t.userid,
+s.globalsubscriptionid,
 t.event_id,
 t.original_transaction_id,
 t.provider_Reference_id,
-case
-  when UPPER(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0)
-  else coalesce(t.charged_amount, 0) /100
-end as charged_amount,
 
-case
-  when upper(t.Currency) in ('CLP','PYG') then coalesce(t.tax_amount, 0)
-  else coalesce(t.tax_amount, 0) /100
-end as tax_amount,
-
-case
-  when upper(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)
-  else (coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)) /100 
-end as revenue_amount
+round(coalesce(t.charged_amount, 0) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as charged_amount,
+round(coalesce(t.tax_amount, 0) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as tax_amount,
+round((coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as revenue_amount
 
 from Transactions t
 left join subscriptions s on t.source_reference = s.globalsubscriptionid
@@ -476,188 +485,6 @@ left join bolt_finint_prod.beam_latam_silver.fi_paymentmethodv2_enriched pm on t
 where 1=1
 group by all
 )
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Financial Reports
-
--- COMMAND ----------
-
--- DBTITLE 1,Active DTC Subscribers Summary Report
-Select 
-realm,
-origin,
-startedWithFreeTrial,
-inFreeTrial,
-subscribedInSite,
-purchaseTerritory,
-status,
-provider_type,
-provider_name,
-last_payment_provider,
-affiliate,
-priceplan_market,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-numberOfPeriodsBetweenPayments,
-plan_price,
-plan_currency,
-startDate,
-direct_affiliateStartDate,
-nextRenewalDate,
-nextRetryDate,
-endDate,
-cancellationDate,
-card_provider,
-card_type,
-payment_provider,
-last_charge,
-last_charge_result,
-last_result_reason,
-last_invoice_start_date,
-last_invoice_end_date,
--- last_invoice_amount,
-count(globalsubscriptionid) as Subscription_count
--- globalsubscriptionid
--- previousSubscriptionGlobalId
--- userid
-from Active_Retail_Subscriptions
-where provider_type = 'Direct'
-group by all
-
--- COMMAND ----------
-
--- DBTITLE 1,Active DTC Subscribers Detailed Report
-Select 
-realm,
-origin,
-startedWithFreeTrial,
-inFreeTrial,
-subscribedInSite,
-purchaseTerritory,
-status,
-provider_type,
-provider_name,
-last_payment_provider,
-affiliate,
-priceplan_market,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-numberOfPeriodsBetweenPayments,
-plan_price,
-plan_currency,
-startDate,
-direct_affiliateStartDate,
-nextRenewalDate,
-nextRetryDate,
-endDate,
-cancellationDate,
-card_provider,
-card_type,
-payment_provider,
-last_charge,
-last_charge_result,
-last_result_reason,
-last_invoice_start_date,
-last_invoice_end_date,
-last_invoice_amount,
-globalsubscriptionid,
-baseSubscriptionId,
-previousSubscriptionGlobalId,
-userid
-from Active_Retail_Subscriptions
-where provider_type = 'Direct'
-group by all
-
--- COMMAND ----------
-
--- DBTITLE 1,DTC Transactions Summary Report
-select 
-realm,
-created_Date,
-transaction_date,
-invoice_start_date,
-invoice_end_date,
-source_type,
-currency,
-tax_country_code,
-event_type,
-payment_provider,
-cardProvider,
-fundingSource,
-payment_type,
-priceplan_market,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-period_frequency,
-plan_price,
-plan_currency,
-count(event_id) as quantity,
-sum(charged_amount) as total_charged,
-sum(tax_amount) as total_tax,
-sum(revenue_amount) as total_revenue
-from Transactions_Extract
-where created_date >= '2024-02-27T09:00:00.000+00:00'
--- and invoice_start_date::date >= '2024-01-01'
-group by all
--- and event_type in ('SUCCESSFUL','REFUNDED','CHARGEBACK')
-
--- COMMAND ----------
-
--- DBTITLE 1,DTC Transactions Detail Report
-select 
-realm,
-created_date,
-transaction_date,
-invoice_start_date,
-invoice_end_date,
-source_type,
-currency,
-tax_country_code,
-event_type,
-payment_provider,
-cardProvider,
-fundingSource,
-payment_type,
-priceplan_market,
-productname,
-tier_type,
-campaignName,
-internalname,
-priceplantype,
-paymentperiod,
-period_frequency,
-plan_price,
-plan_currency,
-userid,
-event_id,
-provider_Reference_id,
-original_transaction_id,
-charged_amount,
-tax_amount,
-revenue_amount
-from Transactions_Extract
-where created_date >= '2024-02-27T09:00:00.000+00:00'
-and invoice_start_date::date >= '2024-01-01'
-and event_type IN (
-  'SUCCESSFUL',
-  'REFUNDED',
-  'CHARGEBACK'
-)
-group by all
 
 -- COMMAND ----------
 
@@ -695,6 +522,42 @@ WHERE t.event_type = 'SUCCESSFUL'
 GROUP BY ALL
 HAVING count > 1
     AND total_refunded = 0;
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Duplicate transactions V2
+WITH refunds AS (
+    SELECT 
+        original_transaction_id,
+        SUM(charged_amount) AS total_refunded
+    FROM transactions
+    WHERE event_type IN ('REFUNDED', 'CHARGEBACK')
+    GROUP BY original_transaction_id
+)
+
+SELECT 
+    t.userid,
+    ARRAY_AGG(DISTINCT t.event_id) AS event_ids,
+    ARRAY_AGG(Distinct t.provider_reference_id) as ref_Ids,
+    t.created_date::date,
+    t.service_period_startdate::date,
+    p.productname,
+    p.plan_price,
+    p.market,
+    COUNT(DISTINCT t.event_id) AS count,
+    COALESCE(SUM(t.charged_amount), 0) AS charged_amount,
+    COUNT(r.original_transaction_id) AS refunds_count,
+    COALESCE(SUM(r.total_refunded), 0) AS total_refunded
+
+FROM transactions t
+LEFT JOIN refunds r ON t.event_id = r.original_transaction_id
+LEFT JOIN subscriptions s ON t.source_reference = s.globalsubscriptionid
+LEFT JOIN plans p ON s.priceplanid = p.priceplanid 
+WHERE t.event_type = 'SUCCESSFUL'
+    AND t.created_date::date >= '2024-02-27'
+GROUP BY t.userid, t.created_date::date, t.service_period_startdate::date, p.productname, p.plan_price,p.market
+HAVING COUNT(DISTINCT t.event_id) > 1
+    AND COALESCE(SUM(r.total_refunded), 0) = 0;
 
 -- COMMAND ----------
 
@@ -866,146 +729,51 @@ order by date desc, hour desc
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC # Ad-hoc
-
--- COMMAND ----------
-
--- DBTITLE 1,Check for LTO problem
-with latest_charge as (
-  select 
-  t.event_id,
-  t.event_type,
-  t.event_state_reason,
-  t.payment_provider,
-  t.paymentmethodid,
-  t.source_reference,
-  pm.cardDetails.cardProvider as card_provider,
-  pm.cardDetails.fundingSource as card_type,
-  t.created_date,
-  t.event_occurred_date,
-  t.service_period_startdate,
-  t.service_period_enddate,
-  case
-    when UPPER(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0)
-    else (coalesce(t.charged_amount, 0)) /100
-  end as charged_amount
-
-  from transactions t
-  left join bolt_finint_prod.beam_latam_silver.fi_paymentmethodv2_enriched pm on t.paymentMethodId = pm.id
-  where event_type IN ('SUCCESSFUL','UNKNOWN','PENDING','FAILED', 'RETRYING')
-  and charged_amount != 0
-  and t.created_date < '2024-02-27'
-  QUALIFY ROW_NUMBER() OVER(PARTITION BY t.source_reference ORDER BY t.created_date desc) = 1
-)
-
+-- DBTITLE 1,LATAM Installment Plans by Funding Source
 select
-s.realm,
-s.origin,
-s.startedWithFreeTrial,
-s.inFreeTrial,
-s.subscribedInSite,
-s.purchaseTerritory,
-replace(s.status,'STATUS_','') as status,
-
-case
-  when s.direct_paymentProvider is not null then 'Direct'
-  when s.iap_provider is not null then 'IAP'
-  when s.partner_partnerId is not null then 'Partner'
-end as provider_type,
-
-coalesce(p.provider,'WEB') as provider_name,
-
-lc.payment_provider as last_payment_provider,
-
-s.direct_affiliate as affiliate,
-
-p.priceplanid,
-replace(p.market,'TG_MARKET_','')as priceplan_market,
-p.productname,
-replace(p.tiertype,'TIER_TYPE_','') as tier_type,
-p.campaignName,
-p.internalname,
-replace(p.priceplantype,'TYPE_','') as priceplantype,
-replace(p.paymentPeriod,'PERIOD_','') as paymentperiod,
-p.numberOfPeriodsBetweenPayments,
-p.plan_price as plan_price,
-p.currency as plan_currency,
-
-s.startDate::date,
-s.direct_affiliateStartDate::date,
-s.nextRenewalDate::date,
-s.nextRetryDate::date,
-s.endDate::date,
-s.cancellationDate::date,
-UPPER(lc.card_provider) as card_provider,
-UPPER(lc.card_type) as card_type,
-lc.payment_provider,
-lc.created_date::date as last_charge,
-lc.event_type as last_charge_result,
-lc.event_state_reason as last_result_reason,
-lc.service_period_startdate::date as last_invoice_start_date,
-lc.service_period_enddate::date as last_invoice_end_date,
-lc.charged_amount as last_invoice_amount,
-s.globalsubscriptionid,
-s.previousSubscriptionGlobalId,
-s.userid
-
-from Subscriptions s
-left join plans p on s.priceplanid = p.priceplanid
-left join latest_charge lc on s.globalsubscriptionid = lc.source_reference
-
-where 1=1
-and s.status IN ('STATUS_ACTIVE','STATUS_CANCELED')
-and UPPER(p.productname) LIKE '%LEGACY MBL%'
-and s.startDate::date < '2024-02-27'
-group by all
-having provider_type in ('Direct')
-and plan_price - last_invoice_amount > 0
-
--- COMMAND ----------
-
--- DBTITLE 1,Empty StateTransitions Array Volume
-select 
-created_date::date,
-count(distinct event_id)
-from transactions
-where created_date >= '2024-02-27T09:00:00.000+00:00'
-and event_type in (
-  'UNKNOWN'
+-- created_date::date,
+date_format(transaction_date, 'yyyy-MM') AS month,
+-- invoice_start_date::date,
+-- invoice_end_date::date,
+source_type,
+currency,
+tax_country_code,
+event_type,
+payment_provider,
+direct_affiliate,
+-- payment_method_type,
+cardProvider,
+fundingsource,
+payment_type,
+priceplan_market,
+product_type,
+productname,
+tier_type,
+campaignName,
+internalname,
+priceplantype,
+paymentperiod,
+period_frequency,
+plan_price,
+plan_currency,
+currencyDecimalPoints,
+-- userid,
+-- globalsubscriptionid,
+-- basesubscriptionid,
+-- previoussubscriptionglobalid,
+-- event_id,
+-- original_transaction_id,
+-- provider_Reference_id,
+-- merchantaccount,
+charged_amount,
+tax_amount,
+revenue_amount,
+count(event_id) as quantity
+from transactions_extract
+where transaction_date::date BETWEEN '2024-04-01' and '2024-06-30'
+and event_type IN (
+  'SUCCESSFUL',
+  'RETRYING',
+  'FAILED'
 )
-group by all
-order by created_date desc
-
--- COMMAND ----------
-
--- DBTITLE 1,Kinesis vs Kafka Refund count
-with kafka_refunds as 
-(
-select 
-event_occurred_date::date as created_date,
-count(distinct event_id) as count
-from transactions
-where event_type = 'REFUNDED'
-group by 1
-),
-
-kinesis_refunds as (
-  select 
-  chargedTimestamp::date as created_date,
-  count(distinct id) as count
-  from bolt_finint_prod.beam_latam_silver.fi_transaction_enriched
-  where UPPER(transactionType) = 'REFUND'
-  and UPPER(status) = 'SUCCESS'
-  group by 1
-)
-
-select 
-ki.created_date as kinesis_charged_date,
-ki.count as kinesis_count,
-kf.created_date as kafka_occurred_date,
-kf.count as kafka_count
-from kinesis_refunds ki
-full join kafka_refunds kf on ki.created_date=kf.created_date
-where ki.created_date >= '2024-02-27'
 group by all

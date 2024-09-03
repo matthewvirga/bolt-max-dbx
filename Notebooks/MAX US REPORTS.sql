@@ -64,10 +64,24 @@ pp.realm,
     else 'EMEA'
   end as Region,
   marketId as market,
+    case 
+    when marketid IN ('TG_MARKET_NETHERLANDS','TG_MARKET_POLAND','TG_MARKET_FRANCE','TG_MARKET_BELGIUM') then 'WAVE 2'
+    else null
+  end as launch_wave,
   pp.id as priceplanid,
   pr.addOnIds [0] as addOnIds,
   pr.mainProductIds [0] as mainProductIds,
+  pr.bundlingMemberIds [0] as bundlingMemberIds,
+  pr.contractId,
+  pr.bundle as bundle,
+  pr.fulfillerPartnerId,
+  pr.fulfillerPartnerSku,
   pr.productType as producttype,
+  pr.businessType,
+  pr.businessPlatform,
+  pr.businessBrand,
+  pr.revenueType,
+  pr.businessCase,
   pr.name as productname,
   pr.tiertype as tiertype,
   pp.provider as Provider,
@@ -81,7 +95,8 @@ pp.realm,
   coalesce(pp.price, 0) as price,
   coalesce(pp.currencyDecimalPoints,0) as currencyDecimalPoints,
   coalesce(pp.price, 0) / POWER(10, coalesce(pp.currencyDecimalPoints,0)) AS plan_price,
-  pp.currency as currency
+  pp.currency as currency,
+  pr.capabilitiesProvided
 from
   bolt_finint_prod.silver.fi_priceplanv2_enriched pp
   LEFT JOIN bolt_finint_prod.silver.fi_product_enriched pr on pp.productid = pr.id
@@ -175,6 +190,7 @@ end as event_id,
 -- st.event.refunded.refundReference as refund_id,
 
 case
+  when st.event.refunding.providerRefundReference is not null then id
   when st.event.refunded.providerRefundReference is not null then id
   when st.event.chargeback.providerChargebackReference is not null then id
 end as original_transaction_id,
@@ -238,8 +254,8 @@ case
   when st.event.pending.providerPaymentReference is not null then 'PENDING'
   when st.event.successful.providerPaymentReference is not null then 'SUCCESSFUL'
   when st.event.canceled.reason is not null then 'CANCELLED'
-  when st.event.failed.providerPaymentReference is not null then 'FAILED'
-  when st.event.retrying.nextretry is not null then 'RETRYING'
+  when (st.event.failed.providerPaymentReference is not null OR st.event.failed.reason is not null) then 'FAILED'
+  when (st.event.retrying.nextretry is not null OR st.event.retrying.reason is not null) then 'RETRYING'
   when st.event.refunding.source is not null then 'REFUNDING'
   when st.event.refunded.providerRefundReference is not null then 'REFUNDED'
   when st.event.refundFailed.reason is not null then 'REFUND FAILED'
@@ -409,6 +425,112 @@ having provider_type in ('Direct','IAP')
 
 -- COMMAND ----------
 
+-- DBTITLE 1,All Subscriptions
+create or replace temporary view All_Subscriptions as 
+(
+with latest_charge as (
+  select 
+  t.event_id,
+  t.event_type,
+  t.event_state_reason,
+  t.payment_provider,
+  t.paymentmethodid,
+  t.source_reference,
+  pm.cardDetails.cardProvider as card_provider,
+  pm.cardDetails.fundingSource as card_type,
+  t.created_date,
+  t.event_occurred_date,
+  t.service_period_startdate,
+  t.service_period_enddate,
+  case
+    when UPPER(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0)
+    else (coalesce(t.charged_amount, 0)) /100
+  end as charged_amount
+
+  from transactions t
+  left join bolt_finint_prod.beam_emea_silver.fi_paymentmethodv2_enriched pm on t.paymentMethodId = pm.id
+  where event_type IN ('SUCCESSFUL','UNKNOWN','PENDING','FAILED', 'RETRYING')
+  and charged_amount != 0
+  QUALIFY ROW_NUMBER() OVER(PARTITION BY t.source_reference ORDER BY t.created_date desc) = 1
+)
+
+select
+s.realm,
+s.origin,
+s.startedWithFreeTrial,
+s.inFreeTrial,
+s.subscribedInSite,
+s.purchaseTerritory,
+replace(s.status,'STATUS_','') as status,
+
+case
+  when s.direct_paymentProvider is not null then 'Direct'
+  when s.iap_provider is not null then 'IAP'
+  when s.partner_partnerId is not null then 'Partner'
+end as provider_type,
+
+coalesce(p.provider,'WEB') as provider_name,
+
+lc.payment_provider as last_payment_provider,
+
+s.direct_affiliate as affiliate,
+
+p.priceplanid,
+replace(p.market,'TG_MARKET_','')as priceplan_market,
+replace(p.producttype,'PRODUCT_TYPE_','') as product_type,
+p.bundle as is_bundle,
+p.businessType,
+p.businessPlatform,
+p.businessBrand,
+p.revenueType,
+p.businessCase,
+p.productname,
+replace(p.tiertype,'TIER_TYPE_','') as tier_type,
+p.campaignName,
+p.internalname,
+replace(p.priceplantype,'TYPE_','') as priceplantype,
+replace(p.paymentPeriod,'PERIOD_','') as paymentperiod,
+p.numberOfPeriodsBetweenPayments,
+p.plan_price as plan_price,
+p.currency as plan_currency,
+
+s.startDate::date,
+s.direct_affiliateStartDate::date,
+s.nextRenewalDate::date,
+s.nextRetryDate::date,
+s.endDate::date,
+s.cancellationDate::date,
+UPPER(lc.card_provider) as card_provider,
+UPPER(lc.card_type) as card_type,
+lc.payment_provider,
+lc.created_date::date as last_charge,
+lc.event_type as last_charge_result,
+lc.event_state_reason as last_result_reason,
+lc.service_period_startdate::date as last_invoice_start_date,
+lc.service_period_enddate::date as last_invoice_end_date,
+lc.charged_amount as last_invoice_amount,
+
+p.contractId,
+p.fulfillerPartnerId,
+p.fulfillerPartnerSku,
+s.globalsubscriptionid,
+s.baseSubscriptionId,
+s.previousSubscriptionGlobalId,
+s.userid
+
+from Subscriptions s
+left join plans p on s.priceplanid = p.priceplanid
+left join latest_charge lc on s.globalsubscriptionid = lc.source_reference
+
+where 1=1
+  -- and p.bundle
+-- and s.status IN ('STATUS_ACTIVE','STATUS_CANCELED')
+group by all
+-- having provider_type in ('Direct','IAP')
+)
+
+-- COMMAND ----------
+
 -- DBTITLE 1,Transactions Extract
 create or replace temporary view Transactions_Extract as
 (
@@ -435,12 +557,20 @@ t.currency,
 UPPER(t.tax_country_code) as tax_country_code,
 t.event_type,
 t.payment_provider,
+s.direct_affiliate,
 pm.cardDetails.cardProvider,
 pm.cardDetails.fundingSource,
 t.payment_type,
+p.priceplanid,
 replace(p.market,'TG_MARKET_','')as priceplan_market,
 replace(p.producttype,'PRODUCT_TYPE_','') as product_type,
 p.productname,
+p.bundle as is_bundle,
+p.businessType,
+p.businessPlatform,
+p.businessBrand,
+p.revenueType,
+p.businessCase,
 replace(p.tiertype,'TIER_TYPE_','') as tier_type,
 p.campaignName,
 p.internalname,
@@ -449,24 +579,16 @@ replace(p.paymentPeriod,'PERIOD_','') as paymentperiod,
 p.numberOfPeriodsBetweenPayments as period_frequency,
 p.plan_price as plan_price,
 p.currency as plan_currency,
+p.currencyDecimalPoints,
 t.userid,
+s.globalsubscriptionid,
 t.event_id,
 t.original_transaction_id,
 t.provider_Reference_id,
-case
-  when UPPER(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0)
-  else coalesce(t.charged_amount, 0) /100
-end as charged_amount,
 
-case
-  when upper(t.Currency) in ('CLP','PYG') then coalesce(t.tax_amount, 0)
-  else coalesce(t.tax_amount, 0) /100
-end as tax_amount,
-
-case
-  when upper(t.Currency) in ('CLP','PYG') then coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)
-  else (coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)) /100 
-end as revenue_amount
+round(coalesce(t.charged_amount, 0) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as charged_amount,
+round(coalesce(t.tax_amount, 0) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as tax_amount,
+round((coalesce(t.charged_amount, 0) - coalesce(t.tax_amount, 0)) / POWER(10, coalesce(p.currencyDecimalPoints,0)),2) as revenue_amount
 
 from Transactions t
 left join subscriptions s on t.source_reference = s.globalsubscriptionid
@@ -609,14 +731,15 @@ period_frequency,
 plan_price,
 plan_currency,
 count(event_id) as quantity,
-sum(charged_amount) as total_charged,
-sum(tax_amount) as total_tax,
-sum(revenue_amount) as total_revenue
+round(sum(charged_amount),2) as total_charged,
+round(sum(tax_amount),2) as total_tax,
+round(sum(revenue_amount),2) as total_revenue
 from Transactions_Extract
-where created_date >= '2024-02-27T09:00:00.000+00:00'
+where created_date >= '2024-07-01T00:00:00.000+00:00'
+and event_type in ('SUCCESSFUL','REFUNDED','CHARGEBACK')
 -- and invoice_start_date::date >= '2024-01-01'
 group by all
--- and event_type in ('SUCCESSFUL','REFUNDED','CHARGEBACK')
+
 
 -- COMMAND ----------
 
@@ -654,227 +777,164 @@ charged_amount,
 tax_amount,
 revenue_amount
 from Transactions_Extract
-where created_date >= '2024-04-01T00:00:00.000+00:00'
+where created_date >= '2024-07-01T00:00:00.000+00:00'
 -- and invoice_start_date::date >= '2024-01-01'
--- and event_type IN (
---   'SUCCESSFUL',
---   'REFUNDED',
---   'CHARGEBACK'
--- )
-group by all
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Financial Controls
-
--- COMMAND ----------
-
--- DBTITLE 1,Duplicate Transactions
-WITH refunds AS (
-    SELECT 
-        original_transaction_id,
-        SUM(charged_amount) AS total_refunded
-    FROM transactions
-    WHERE event_type IN ('REFUNDED', 'CHARGEBACK')
-    GROUP BY original_transaction_id
+and event_type IN (
+  'SUCCESSFUL',
+  'REFUNDED',
+  'CHARGEBACK'
 )
-
-SELECT 
-    t.userid,
-    t.source_type,
-    t.created_date::date,
-    t.service_period_startdate::date,
-    p.producttype,
-    p.productname,
-    p.plan_price,
-    COUNT(DISTINCT t.event_id) AS count,
-    COALESCE(SUM(t.charged_amount), 0) AS charged_amount,
-    COUNT(r.original_transaction_id) AS refunds_count,
-    COALESCE(SUM(r.total_refunded), 0) AS total_refunded
-FROM transactions t
-LEFT JOIN refunds r ON t.event_id = r.original_transaction_id
-LEFT JOIN subscriptions s ON t.source_reference = s.globalsubscriptionid
-LEFT JOIN plans p ON s.priceplanid = p.priceplanid 
-WHERE t.event_type = 'SUCCESSFUL'
-    AND t.created_date::date >= '2024-01-01'
-GROUP BY ALL
-HAVING count > 1
-    AND total_refunded = 0;
+group by all
 
 -- COMMAND ----------
 
--- DBTITLE 1,Duplicate Subscriptions
--- select
--- userid,
--- count(distinct globalsubscriptionid) as subscription_count
--- from subscriptions
--- where direct_paymentprovider is not null
--- and status in ('STATUS_ACTIVE','STATUS_CANCELED')
--- group by 1
--- having subscription_count > 1
-
+-- DBTITLE 1,Price Increase Summary
 select 
-userid,
-count(distinct globalsubscriptionid) as subscription_count
-from active_retail_subscriptions
-where provider_type = 'Direct'
-and product_type = 'MAIN'
-and status in ('ACTIVE','CANCELED')
-group by 1
-having subscription_count > 1
-
--- COMMAND ----------
-
--- DBTITLE 1,Unbilled Subscriptions
-select
-  userid,
-  globalsubscriptionid,
-  subscribedinsite,
-  Provider_type,
-  provider_name,
-  product_type,
-  productname,
-  campaignname,
-  internalname,
-  status,
-  startdate,
-  nextrenewaldate,
-  nextretrydate,
-  plan_price,
-  last_charge,
-  last_charge_result,
-  last_result_reason,
-  last_invoice_start_date,
-  last_invoice_end_date,
-  last_invoice_amount,
-  priceplan_market
-from Active_retail_subscriptions
-where 1=1
-  and nextrenewaldate < current_date
-  and nextretrydate is null
-  and plan_price > 0
-group by all
-Having provider_type = 'Direct'
-
--- COMMAND ----------
-
--- DBTITLE 1,Add-On Base Sub ID Check
-select * from active_retail_subscriptions
-where product_type = 'ADD_ON'
-and basesubscriptionID is null
-
--- COMMAND ----------
-
--- DBTITLE 1,Next Renewal Date Validation
-select
-  userid,
-  globalsubscriptionid,
-  Provider_type,
-  provider_name,
-  subscribedinsite,
-  status,
-  startdate,
-  nextretrydate,
-  tier_type,
-  productname,
-  paymentperiod,
-  numberOfPeriodsBetweenPayments,
-  nextrenewaldate,
-
-  case 
-    when paymentperiod = 'MONTH' and months_between(nextrenewaldate, current_date()) <= numberOfPeriodsBetweenPayments THEN 'as expected'
-    when paymentperiod = 'YEAR' and months_between(nextrenewaldate, current_date()) <= (numberOfPeriodsBetweenPayments * 12) THEN 'as expected'
-    else 'not expected'
-  end as next_renewal_check,
-
-  last_charge,
-  last_charge_result,
-  last_result_reason,
-  last_invoice_start_date,
-  last_invoice_end_date,
-  priceplan_market
-from Active_retail_subscriptions
-where 1=1
-and paymentperiod in ('MONTH','YEAR')
-
-group by all
-Having provider_type = 'Direct'
-and next_renewal_check = 'not expected'
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC # Ad-hoc
-
--- COMMAND ----------
-
--- DBTITLE 1,March Madness Acquired Subscribers
-Select 
 realm,
-origin,
-subscribedInSite,
-purchaseTerritory,
-status,
-provider_type,
-provider_name,
-affiliate,
+transaction_date,
+invoice_start_date,
+invoice_end_date,
+source_type,
+currency,
+tax_country_code,
+event_type,
+payment_provider,
+cardProvider,
+fundingSource,
+payment_type,
 priceplan_market,
+product_type,
 productname,
 tier_type,
 campaignName,
 internalname,
 priceplantype,
 paymentperiod,
-numberOfPeriodsBetweenPayments,
+period_frequency,
 plan_price,
 plan_currency,
-startDate,
-direct_affiliateStartDate,
-nextRenewalDate,
-nextRetryDate,
-endDate,
-payment_provider,
-count(globalsubscriptionid) as Subscription_count
-from Active_Retail_Subscriptions
+count(event_id) as quantity,
+round(sum(charged_amount),2) as total_charged,
+round(sum(tax_amount),2) as total_tax,
+round(sum(revenue_amount),2) as total_revenue
+from Transactions_Extract
 where 1=1
-and startDate between '2024-03-14' and '2024-04-11'
-and priceplanid in (
-'25207',
-'25208',
-'25320',
-'24542',
-'24543',
-'24545',
-'24551',
-'24552',
-'24553',
-'24554',
-'24555',
-'24556',
-'24711',
-'24712',
-'24713',
-'36',
-'38',
-'42',
-'48',
-'50',
-'54',
-'60',
-'62',
-'66',
-'24539',
-'24540',
-'24541',
-'24544',
-'24546',
-'24547',
-'24548',
-'24549',
-'24550',
-'25209',
-'25210',
-'25211'
-)
+and event_type = 'SUCCESSFUL'
+and invoice_start_date::date >= '2024-07-04T08:00:00.000+00:00'
 group by all
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Price increase check - Detail
+select 
+realm,
+transaction_date,
+invoice_start_date,
+invoice_end_date,
+source_type,
+currency,
+tax_country_code,
+event_type,
+payment_provider,
+cardProvider,
+fundingSource,
+payment_type,
+priceplan_market,
+product_type,
+productname,
+tier_type,
+campaignName,
+internalname,
+priceplantype,
+paymentperiod,
+period_frequency,
+plan_price,
+plan_currency,
+charged_amount as total_charged,
+tax_amount as total_tax,
+revenue_amount as total_revenue,
+event_id,
+userid,
+globalsubscriptionid
+from Transactions_Extract
+where 1=1
+and event_type = 'SUCCESSFUL'
+and invoice_start_date::date >= '2024-07-04T08:00:00.000+00:00'
+group by all
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Magic Test Subs and Payments
+with Magic_test_users as
+
+(
+select record.user.*
+from bolt_dcp_prod.bronze.raw_s2s_user_entities
+where 1=1
+and record.user.email in (
+  'alexandr.gavrilita-02-07-2024-01@wbd.com',
+  'alexandr.gavrilita-03-07-2024-01@wbd.com',
+  'alexandr.gavrilita-07-08-2024-20@wbd.com',
+  'hector.hernaez2@gmail.com',
+  'hector.hernaez3@gmail.com',
+  'purchase-swithc-activation-test@wbd.com'
+  )
+)
+
+select * from transactions_extract t
+join Magic_test_users m on m.userid = t.userid;
+
+with Magic_test_users as
+
+(
+select record.user.*
+from bolt_dcp_prod.bronze.raw_s2s_user_entities
+where 1=1
+and record.user.email in (
+  'alexandr.gavrilita-02-07-2024-01@wbd.com',
+  'alexandr.gavrilita-03-07-2024-01@wbd.com',
+  'alexandr.gavrilita-07-08-2024-20@wbd.com',
+  'hector.hernaez2@gmail.com',
+  'hector.hernaez3@gmail.com',
+  'purchase-swithc-activation-test@wbd.com'
+  )
+)
+
+select s.* from all_subscriptions s
+join Magic_test_users m on m.userid = s.userid;
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Magic Subs and Transactions
+select s.*
+from all_subscriptions s
+where s.priceplanid in (
+    select priceplanid
+    from plans
+    where lower(productname) like '%magic%'
+);
+
+---
+
+select t.* 
+from Transactions_extract t
+where t.priceplanid in (
+    select priceplanid
+    from plans
+    where lower(productname) like '%magic%'
+);
+
+
+-- COMMAND ----------
+
+select distinct unpackedValue.product.tiertype
+from bolt_payments_prod.gold.s2s_product_catalog_entities
+
+-- COMMAND ----------
+
+SELECT *
+FROM bolt_finint_prod.silver.fi_transaction_enriched
+where userid = 'USERID:bolt:3d12e8d7-a08b-4198-9caa-e64686e43cc4'
+AND createDate >= '2022-07-01'

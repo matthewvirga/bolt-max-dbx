@@ -72,7 +72,7 @@ bolt_finint_prod.silver.fi_campaignv2_enriched
 
 bolt_finint_prod.silver.fi_priceplanv2_enriched
 
-bolt_finint_prod.silver.fi_priceplanv2_enriched
+bolt_finint_prod.silver.fi_product_enriched
 
 
 ### US:

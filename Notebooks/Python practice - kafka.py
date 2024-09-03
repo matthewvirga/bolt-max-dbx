@@ -233,7 +233,6 @@ df_result.printSchema()
 # MAGIC         ) AS attempt_number
 # MAGIC     FROM event_data
 # MAGIC     WHERE event_type IN ('SOFT_FAILURE', 'HARD_FAILURE')
-# MAGIC     and 
 # MAGIC )
 # MAGIC
 # MAGIC -- Select the final result set, ordered by user, invoice, and attempt number
@@ -250,23 +249,3 @@ df_result.printSchema()
 # MAGIC where service_period_start >= '2024-04-01'
 # MAGIC and user_id = '1701782222356249717'
 # MAGIC ORDER BY user_id, invoice_id, attempt_number
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC select * from 
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC
-# MAGIC select record.subscription.userId, 
-# MAGIC count(distinct record.subscription.globalsubscriptionid) sub_count
-# MAGIC from bolt_dcp_prod.bronze.raw_s2s_subscription_entities
-# MAGIC where record.subscription.status IN ('STATUS_ACTIVE','STATUS_CANCELED')
-# MAGIC group by record.subscription.userId
-# MAGIC having sub_count > 1
-# MAGIC
-# MAGIC
-# MAGIC
-# MAGIC
