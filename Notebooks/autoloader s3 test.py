@@ -33,5 +33,5 @@ streaming_query = (df_with_metadata.writeStream
     .option("checkpointLocation", checkpoint_location)
     .option("mergeSchema", "true")
     .outputMode("append")
-    .trigger(once=True)  # Trigger the job only once
+    .trigger(availableNow=True)  # Updated trigger option
     .start(table_name))
