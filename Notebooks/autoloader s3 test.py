@@ -24,7 +24,7 @@ df = (
     .option("header", "true") 
     .option("inferSchema", "true")
     .option("cloudFiles.schemaLocation", schema_location)
-    .option("cloudFiles.includePathPatterns", path_pattern)  # Use the path pattern from the widget
+    .option("fileNamePattern", path_pattern)  # Use the path pattern from the widget
     .load(s3_bucket_path)
 )
 
@@ -39,12 +39,12 @@ df_with_metadata = (
 )
 
 # Write to Delta table
-streaming_query = (
-    df_with_metadata.writeStream
+(
+df_with_metadata.writeStream
     .format("delta")
     .option("checkpointLocation", checkpoint_location)
     .option("mergeSchema", "true")
     .outputMode("append")
     .trigger(availableNow=True)  # This will grab only the un-processed files then stop
-    .start(table_name)
+    .toTable(table_name)
 )
