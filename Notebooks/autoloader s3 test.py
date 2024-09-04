@@ -1,5 +1,13 @@
 # Databricks notebook source
+import re
 from pyspark.sql.functions import current_timestamp, input_file_name
+
+# Function to clean column names by replacing unsupported characters and spaces with "_"
+def clean_column_names(df):
+    for c in df.columns:
+        cleaned_name = re.sub(r'[^a-zA-Z0-9_]', '_', c.replace(' ', '_'))
+        df = df.withColumnRenamed(c, cleaned_name)
+    return df
 
 # Access parameters passed from the Workflow UI
 s3_bucket_path = dbutils.widgets.get("s3_bucket_path")
@@ -9,29 +17,34 @@ checkpoint_location = dbutils.widgets.get("checkpoint_location")
 path_pattern = dbutils.widgets.get("path_pattern") # This is to determine which report to grab sales, finance, earnings etc.
 
 # Read from S3 bucket using Auto Loader, filtering for files based on the path pattern
-df = (spark.readStream
+df = (
+    spark.readStream
     .format("cloudFiles")
     .option("cloudFiles.format", "csv")
     .option("header", "true") 
     .option("inferSchema", "true")
     .option("cloudFiles.schemaLocation", schema_location)
     .option("cloudFiles.includePathPatterns", path_pattern)  # Use the path pattern from the widget
-    .option("cloudFiles.pathGlobFilter", path_pattern)  # Apply path pattern as glob filter for case sensitivity
-    .load(s3_bucket_path))
+    .load(s3_bucket_path)
+)
 
-# Modify column names in the schema
-new_column_names = [col.replace(' ', '_') for col in df.schema.names]
-df = df.toDF(*new_column_names)
+# Clean the DataFrame column names
+df_cleaned = clean_column_names(df)
 
 # Add metadata columns
-df_with_metadata = df.withColumn("appended_timestamp", current_timestamp()) \
-                    .withColumn("file_name", input_file_name())
+df_with_metadata = (
+    df_cleaned
+    .withColumn("appended_timestamp", current_timestamp())
+    .withColumn("file_name", input_file_name())
+)
 
 # Write to Delta table
-streaming_query = (df_with_metadata.writeStream
+streaming_query = (
+    df_with_metadata.writeStream
     .format("delta")
     .option("checkpointLocation", checkpoint_location)
     .option("mergeSchema", "true")
     .outputMode("append")
-    .trigger(availableNow=True)  # Updated trigger option
-    .start(table_name))
+    .trigger(availableNow=True)  # This will grab only the un-processed files then stop
+    .start(table_name)
+)
