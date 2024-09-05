@@ -16,7 +16,7 @@ schema_location = dbutils.widgets.get("schema_location")
 checkpoint_location = dbutils.widgets.get("checkpoint_location")
 path_pattern = dbutils.widgets.get("path_pattern") # This is to determine which report to grab sales, finance, earnings etc.
 
-# Read from S3 bucket using Auto Loader, filtering for files based on the path pattern
+# Read from S3 bucket using Auto Loader, filtering for files based on the path pattern, adding autoloader metadata for tracking
 df = (
     spark.readStream
     .format("cloudFiles")
@@ -24,23 +24,22 @@ df = (
     .option("header", "true") 
     .option("inferSchema", "true")
     .option("cloudFiles.schemaLocation", schema_location)
-    .option("fileNamePattern", path_pattern)  # Use the path pattern from the widget
+    .option("cloudFiles.useStrictGlobber", "true")  # Enable strict globbing
+    .option("pathGlobFilter", path_pattern)  # Use the path pattern from the widget
     .load(s3_bucket_path)
+    .withColumn("source_file", input_file_name())
+    .withColumn("autoload_timestamp", current_timestamp())
 )
 
-# Clean the DataFrame column names
-df_cleaned = clean_column_names(df)
-
-# Add metadata columns
-df_with_metadata = (
-    df_cleaned
-    .withColumn("appended_timestamp", current_timestamp())
-    .withColumn("file_name", input_file_name())
+# Clean column names, de-dupe
+df_final = (
+    clean_column_names(df)
+    .dropDuplicates()  # Deduplicate records based on data content
 )
 
 # Write to Delta table
 (
-df_with_metadata.writeStream
+df_final.writeStream
     .format("delta")
     .option("checkpointLocation", checkpoint_location)
     .option("mergeSchema", "true")
