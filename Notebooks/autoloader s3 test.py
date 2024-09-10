@@ -27,19 +27,23 @@ df = (
     .option("cloudFiles.useStrictGlobber", "true")  # Enable strict globbing
     .option("pathGlobFilter", path_pattern)  # Use the path pattern from the widget
     .load(s3_bucket_path)
-    .withColumn("source_file", input_file_name())
-    .withColumn("autoload_timestamp", current_timestamp())
 )
 
 # Clean column names, de-dupe
-df_final = (
+df_filtered = (
     clean_column_names(df)
     .dropDuplicates()  # Deduplicate records based on data content
 )
 
+# Add Timestamp for when the data was ingested
+df_add_ts = (
+    df_filtered
+    .withColumn("load_timestamp", current_timestamp())  # Add timestamp column
+)
+
 # Write to Delta table
 (
-df_final.writeStream
+df_add_ts.writeStream
     .format("delta")
     .option("checkpointLocation", checkpoint_location)
     .option("mergeSchema", "true")

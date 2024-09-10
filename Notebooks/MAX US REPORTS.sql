@@ -778,6 +778,7 @@ tax_amount,
 revenue_amount
 from Transactions_Extract
 where created_date >= '2024-07-01T00:00:00.000+00:00'
+and subscribedInSite = 'BOOMERANG'
 -- and invoice_start_date::date >= '2024-01-01'
 and event_type IN (
   'SUCCESSFUL',
