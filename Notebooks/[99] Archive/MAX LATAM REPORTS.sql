@@ -771,11 +771,13 @@ revenue_amount
 from Transactions_Extract
 where created_date >= '2024-02-27T09:00:00.000+00:00'
 and invoice_start_date::date >= '2024-01-01'
+and userid = 'USERID:bolt:799bc139-b733-4ee1-bd09-4271d1a662ec'
 and event_type IN (
   'SUCCESSFUL',
   'REFUNDED',
   'CHARGEBACK'
 )
+
 group by all
 
 -- COMMAND ----------

@@ -29,11 +29,7 @@
 
 # COMMAND ----------
 
-dbutils.fs.rm("dbfs:/mnt/delta/bolt_finint_int/bronze/", True)
-
-# COMMAND ----------
-
-dbutils.fs.rm("dbfs:/mnt/delta/bolt_finint_int/bronze/roku_v2_test/", True)
+dbutils.fs.rm("dbfs:/mnt/delta/bolt_finint_int/bronze/apple_sales_reports_s3/", True)
 
 # COMMAND ----------
 
@@ -49,19 +45,19 @@ for file in files:
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC Drop table if exists bolt_finint_int.bronze.apple_v2_test
+# MAGIC Drop table if exists bolt_finint_int.bronze.apple_sales_reports_s3_test2
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC Drop table if exists bolt_finint_int.bronze.amazon_v2_test
+# MAGIC Drop table if exists bolt_finint_int.bronze.amazon_sales_reports_s3_test2
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC Drop table if exists bolt_finint_int.bronze.google_v2_test
+# MAGIC Drop table if exists bolt_finint_int.bronze.google_sales_reports_s3_test2
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC Drop table if exists bolt_finint_int.bronze.roku_v2_test
+# MAGIC Drop table if exists bolt_finint_int.bronze.roku_transactions_reports_s3_test2
