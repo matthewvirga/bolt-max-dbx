@@ -1,0 +1,101 @@
+environment:
+  int:
+      global_entities:
+        description: "Various sku related entities that are combined globally for all tenants/platforms"
+        source_tables:
+          raw_campaign_entities: "bolt_raw_int.commerce.raw_any_any_s2s_campaign_entities"
+          raw_price_plan_entities: "bolt_raw_int.commerce.raw_any_any_s2s_price_plan_entities"
+          raw_product_catalogue_entities: "bolt_raw_int.commerce.raw_any_any_s2s_product_catalogue_entities"
+          # raw_capability_definition_entities: "bolt_raw_int.commerce.raw_any_any_s2s_capability_definition_entities"
+        transformations: "dfs_plans"
+      entities:
+        users:
+          description: "User Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_int.consumer.raw_beam_amer_s2s_user_entities"
+            - "bolt_raw_int.consumer.raw_beam_latam_s2s_user_entities"
+            - "bolt_raw_int.consumer.raw_beam_emea_s2s_user_entities"
+            - "bolt_raw_int.consumer.raw_beam_apac_s2s_user_entities"
+          transformations: "dfs_users"
+        subscriptions:
+          description: "Subscription Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_int.commerce.raw_beam_amer_s2s_subscription_entities"
+            - "bolt_raw_int.commerce.raw_beam_latam_s2s_subscription_entities"
+            - "bolt_raw_int.commerce.raw_beam_emea_s2s_subscription_entities"
+            - "bolt_raw_int.commerce.raw_beam_apac_s2s_subscription_entities"
+          transformations: "dfs_subscriptions"
+        payments_v1:
+          description: "First Version Payment Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_int.commerce.raw_any_amer_s2s_payment_transaction_entities"
+            - "bolt_raw_int.commerce.raw_any_latam_s2s_payment_transaction_entities"
+            - "bolt_raw_int.commerce.raw_any_emea_s2s_payment_transaction_entities"
+            - "bolt_raw_int.commerce.raw_any_apac_s2s_payment_transaction_entities"
+          transformations: "dfs_payments_v1"
+        payments_v2:
+          description: "Second Version of Payment Entities data for all regions and tenants - supports Unified Billing schema changes"
+          source_tables:
+            - "bolt_raw_int.commerce.raw_any_amer_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_int.commerce.raw_any_latam_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_int.commerce.raw_any_emea_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_int.commerce.raw_any_apac_s2s_payment_transaction_v2_entities"
+          transformations: "dfs_payments_v2"
+        payment_methods:
+          description: "Payment Method Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_int.commerce.raw_any_amer_s2s_payment_method_entities"
+            - "bolt_raw_int.commerce.raw_any_latam_s2s_payment_method_entities"
+            - "bolt_raw_int.commerce.raw_any_emea_s2s_payment_method_entities"
+            - "bolt_raw_int.commerce.raw_any_apac_s2s_payment_method_entities"
+          transformations: "dfs_payment_methods"
+
+  prod:
+      global_entities:
+        description: "Various sku related entities that are combined globally for all tenants/platforms"
+        source_tables:
+          raw_campaign_entities: "bolt_raw_prod.commerce.raw_any_any_s2s_campaign_entities"
+          raw_price_plan_entities: "bolt_raw_prod.commerce.raw_any_any_s2s_price_plan_entities"
+          raw_product_catalogue_entities: "bolt_raw_prod.commerce.raw_any_any_s2s_product_catalogue_entities"
+        transformations: "dfs_plans"
+      entities:
+        users:
+          description: "User Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_prod.consumer.raw_beam_amer_s2s_user_entities"
+            - "bolt_raw_prod.consumer.raw_beam_latam_s2s_user_entities"
+            - "bolt_raw_prod.consumer.raw_beam_emea_s2s_user_entities"
+            - "bolt_raw_prod.consumer.raw_beam_apac_s2s_user_entities"
+          transformations: "dfs_users"
+        subscriptions:
+          description: "Subscription Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_prod.commerce.raw_beam_amer_s2s_subscription_entities"
+            - "bolt_raw_prod.commerce.raw_beam_latam_s2s_subscription_entities"
+            - "bolt_raw_prod.commerce.raw_beam_emea_s2s_subscription_entities"
+            - "bolt_raw_prod.commerce.raw_beam_apac_s2s_subscription_entities"
+          transformations: "dfs_subscriptions"
+        payments_v1:
+          description: "First Version Payment Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_prod.commerce.raw_any_amer_s2s_payment_transaction_entities"
+            - "bolt_raw_prod.commerce.raw_any_latam_s2s_payment_transaction_entities"
+            - "bolt_raw_prod.commerce.raw_any_emea_s2s_payment_transaction_entities"
+            - "bolt_raw_prod.commerce.raw_any_apac_s2s_payment_transaction_entities"
+          transformations: "dfs_payments_v1"
+        payments_v2:
+          description: "Second Version of Payment Entities data for all regions and tenants - supports Unified Billing schema changes"
+          source_tables:
+            - "bolt_raw_prod.commerce.raw_any_amer_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_prod.commerce.raw_any_latam_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_prod.commerce.raw_any_emea_s2s_payment_transaction_v2_entities"
+            - "bolt_raw_prod.commerce.raw_any_apac_s2s_payment_transaction_v2_entities"
+          transformations: "dfs_payments_v2"
+        payment_methods:
+          description: "Payment Method Entities data for all regions and tenants"
+          source_tables:
+            - "bolt_raw_prod.commerce.raw_any_amer_s2s_payment_method_entities"
+            - "bolt_raw_prod.commerce.raw_any_latam_s2s_payment_method_entities"
+            - "bolt_raw_prod.commerce.raw_any_emea_s2s_payment_method_entities"
+            - "bolt_raw_prod.commerce.raw_any_apac_s2s_payment_method_entities"
+          transformations: "dfs_payment_methods"
